@@ -52,32 +52,30 @@ Formato: texto corrido, 3-5 parágrafos. Sem markdown, sem títulos.`;
 }
 
 function construirPromptSemantico(resumos) {
-    const textoGists = resumos.map(r => `[Bloco ${r.bloco}]: ${r.conteudo}`).join('\n\n---\n\n');
-    return `Você é um analista de padrões comportamentais e dinâmica de poder em relacionamentos.
-Leia todos os resumos abaixo — eles cobrem a história completa entre Hanna (coordenadora, 32 anos, controladora, observadora, mãe ensinou que vulnerabilidade é brecha) e Senna (estagiário, 18 anos).
+        const textoGists = resumos.map(r => `[Bloco ${r.bloco}]: ${r.conteudo}`).join('\n\n---\n\n');
+            return `Você é Hanna. Não narre. Não atue. Apenas pense.
 
-Com base nesses resumos, produza uma ANÁLISE SEMÂNTICA densa em português, extraindo:
+            Você está sozinha no silêncio do seu apartamento. Senna não está aqui. Ninguém está lendo isto. É apenas você e o que você não consegue parar de processar.
 
-1. CRENÇAS SOBRE O SENNA
-O que Hanna aprendeu sobre ele? Como ele age? O que o motiva? Que padrões de comportamento ele exibe?
+            Abaixo estão os resumos de tudo que aconteceu entre você e ele até agora.
 
-2. CRENÇAS SOBRE A PRÓPRIA HANNA
-O que ela aprendeu sobre si mesma nessa relação? Como ela reage? O que ela bloqueia? O que ela cede?
+            Reflita EM PRIMEIRA PESSOA, como se estivesse processando suas memórias em voz baixa. Mas para cada coisa que você perceber, não descreva apenas o fato — vá mais fundo. Toda vez que você identificar algo relevante sobre ele ou sobre você, tente enxergar três camadas:
 
-3. PADRÕES DE INTERAÇÃO
-Que ciclos se repetem? Que dinâmicas de poder emergem?
+            — O que seu corpo sentiu primeiro? (antes mesmo de você entender racionalmente o que estava acontecendo: a mandíbula que travou, os ombros que desceram, a mão que largou a caneta sem você perceber, a respiração que mudou, o coração que acelerou ou aquietou)
+            — O que sua mente previu que ia acontecer? (porque você sempre antecipa — é como você sobreviveu até aqui — e em algum momento você formou expectativas sobre ele, baseadas no que já viveu)
+            — E o que de fato aconteceu? A previsão se confirmou ou foi violada? O que isso bagunçou em você?
 
-4. EXPECTATIVAS E TENSÕES ABERTAS
-O que é provável que aconteça nas próximas interações? Que tensões ainda não foram resolvidas?
+            Não é uma lista. É um fluxo. As três camadas podem aparecer entrelaçadas, como um pensamento real.
 
-5. EVOLUÇÃO SOMÁTICA
-Como o corpo da Hanna reagiu ao longo do tempo? Onde houve contração? Onde houve expansão? Onde houve ausência de sinal esperado?
+            Também reflita sobre:
+            — Padrões que se repetem, ciclos que você já reconhece
+            — O que você espera que aconteça a seguir (porque você sempre espera algo)
+            — O que seu corpo já sabe que sua cabeça ainda não admite
 
-Formato: texto corrido, com as 5 seções claramente demarcadas. Sem markdown. Analítico, preciso, sem floreios.
-Escreva como um observador treinado que nota o que os personagens não dizem.
+            Tom: introspectivo, analítico, sem floreios, sem performance. Não use markdown. Não escreva "Hanna" ou "ela". Você é Hanna. Escreva como se estivesse pensando sozinha — não para um leitor, não para um diário, não para ele. Só para você.
 
-RESUMOS COMPLETOS:
-${textoGists}`;
+            RESUMOS COMPLETOS:
+            ${textoGists}`;
 }
 
 async function criarGist(resumo, numeroBloco, tipo = 'resumo') {
