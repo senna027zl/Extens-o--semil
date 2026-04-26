@@ -236,7 +236,7 @@ function injectUI() {
         menteInterval=parseInt($('#mente_interval').val())||50; menteAtiva=$('#mente_ativa').prop('checked');
         mentePrompt=$('#mente_prompt').val().trim()||defaultPrompt();
         localStorage.setItem(LS, JSON.stringify({ apiKey, menteModel, menteInterval, menteAtiva, mentePrompt }));
-        $('# mente_status').text('✓ salvo');
+        $('#mente_status').text('✓ salvo');
     });
     $('#mente_now').on('click', () => {
         mentePrompt=$('#mente_prompt').val().trim()||defaultPrompt();
