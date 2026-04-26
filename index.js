@@ -4,9 +4,8 @@
 // Pasta: public/scripts/extensions/third-party/
 // ============================================
 
-import { getContext, saveMetadataDebounced } from '../../../extensions.js';
-import { eventSource, event_types, setExtensionPrompt } from '../../../../script.js';
-
+import { ... } from '../../../../public/scripts/extensions.js';
+import { ... } from '../../../../public/scripts/script.js';
 const LS = 'mnemosyne-settings';
 let saved = {};
 try {
