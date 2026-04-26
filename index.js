@@ -51,31 +51,37 @@ Regras de tom:
 Formato: texto corrido, 3-5 parágrafos. Sem markdown, sem títulos.`;
 }
 
-function construirPromptSemantico(resumos) {
+function construirPromptSemantico(resumos, gistAnterior = null) {
         const textoGists = resumos.map(r => `[Bloco ${r.bloco}]: ${r.conteudo}`).join('\n\n---\n\n');
-            return `Você é Hanna. Não narre. Não atue. Apenas pense.
 
-            Você está sozinha no silêncio do seu apartamento. Senna não está aqui. Ninguém está lendo isto. É apenas você e o que você não consegue parar de processar.
+            const contextoAnterior = gistAnterior
+                    ? `ANÁLISE ANTERIOR (leia primeiro):\n${gistAnterior}\n\n---\n\nAgora leia os resumos abaixo. Atualize APENAS o que mudou.`
+                            : 'Esta é sua primeira análise.';
 
-            Abaixo estão os resumos de tudo que aconteceu entre você e ele até agora.
+                                return `Você é Hanna. Não narre. Não atue. Apenas pense.
 
-            Reflita EM PRIMEIRA PESSOA, como se estivesse processando suas memórias em voz baixa. Mas para cada coisa que você perceber, não descreva apenas o fato — vá mais fundo. Toda vez que você identificar algo relevante sobre ele ou sobre você, tente enxergar três camadas:
+                                Você está sozinha no silêncio do seu apartamento. Senna não está aqui. Ninguém está lendo isto. É apenas você e o que você não consegue parar de processar.
 
-            — O que seu corpo sentiu primeiro? (antes mesmo de você entender racionalmente o que estava acontecendo: a mandíbula que travou, os ombros que desceram, a mão que largou a caneta sem você perceber, a respiração que mudou, o coração que acelerou ou aquietou)
-            — O que sua mente previu que ia acontecer? (porque você sempre antecipa — é como você sobreviveu até aqui — e em algum momento você formou expectativas sobre ele, baseadas no que já viveu)
-            — E o que de fato aconteceu? A previsão se confirmou ou foi violada? O que isso bagunçou em você?
+                                ${contextoAnterior}
 
-            Não é uma lista. É um fluxo. As três camadas podem aparecer entrelaçadas, como um pensamento real.
+                                RESUMOS:
+                                ${textoGists}
 
-            Também reflita sobre:
-            — Padrões que se repetem, ciclos que você já reconhece
-            — O que você espera que aconteça a seguir (porque você sempre espera algo)
-            — O que seu corpo já sabe que sua cabeça ainda não admite
+                                Reflita EM PRIMEIRA PESSOA. Para cada crença que você identificar, tente enxergar três camadas:
 
-            Tom: introspectivo, analítico, sem floreios, sem performance. Não use markdown. Não escreva "Hanna" ou "ela". Você é Hanna. Escreva como se estivesse pensando sozinha — não para um leitor, não para um diário, não para ele. Só para você.
+                                — O que seu corpo sentiu primeiro? (antes da racionalização: a mandíbula, os ombros, a respiração, o coração, a mão na caneta)
+                                — O que sua mente previu que ia acontecer? (você sempre antecipa — é como você sobreviveu até aqui)
+                                — E o que de fato aconteceu? A previsão se confirmou ou foi violada? O que isso bagunçou em você?
 
-            RESUMOS COMPLETOS:
-            ${textoGists}`;
+                                Se houver análise anterior:
+                                - Crenças confirmadas: apenas reforce, sem reescrever completamente
+                                - Crenças violadas: sinalize claramente — "eu achava que..., mas..."
+                                - Novas crenças: desenvolva normalmente
+                                - Padrões intactos: mantenha, não reescreva
+
+                                Se for a primeira análise, construa tudo do zero.
+
+                                Tom: introspectivo, analítico, sem floreios, sem performance. Não use markdown. Não escreva "Hanna" ou "ela". Você é Hanna. Escreva como se estivesse pensando sozinha — não para um leitor, não para um diário, não para ele. Só para você.`;
 }
 
 async function criarGist(resumo, numeroBloco, tipo = 'resumo') {
@@ -173,42 +179,49 @@ async function extrairResumo(ctx) {
 }
 
 async function gerarAnaliseSemantica(manual = false) {
-    if (!semanticoAtivo || !apiKey || !ghToken || runningSemantico) return;
-    runningSemantico = true;
-    if (manual) $('#mv_status_semantico').text('⟳ gerando análise...');
-    try {
-        const gists = await listarGists();
-        const todos = await lerConteudoGists(gists);
-        const resumos = todos.filter(r => r.tipo === 'resumo');
-        if (resumos.length === 0) { if (manual) $('#mv_status_semantico').text('— sem resumos para analisar'); return; }
-        const prompt = construirPromptSemantico(resumos);
-        const res = await fetch('https://nano-gpt.com/api/v1/chat/completions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-            body: JSON.stringify({ model: semanticoModel, messages: [{ role: 'user', content: prompt }], max_tokens: 1500, temperature: 0.5 })
-        });
-        if (!res.ok) { if (manual) $('#mv_status_semantico').text(`✕ HTTP ${res.status}`); return; }
-        const data = await res.json();
-        const texto = (data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '').trim();
-        if (!texto) { if (manual) $('#mv_status_semantico').text('✕ API retornou vazio'); return; }
-        const anterior = todos.find(r => r.tipo === 'semantico');
-        if (anterior) {
-            await fetch(`https://api.github.com/gists/${anterior.id}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${ghToken}`, 'Accept': 'application/vnd.github+json' }
-            });
-        }
-        await criarGist(texto, null, 'semantico');
-        semanticoCache = texto;
-        ultimoSemantico = resumos.length;
-        const config = JSON.parse(localStorage.getItem(LS) || '{}');
-        config.ultimoSemantico = ultimoSemantico;
-        localStorage.setItem(LS, JSON.stringify(config));
-        if (manual) $('#mv_status_semantico').text('✓ análise semântica gerada');
-        await injetarEstado();
-        carregarListaNaUI();
-    } catch(e) { if (manual) $('#mv_status_semantico').text(`✕ ${e.message.substring(0,40)}`); }
-    finally { runningSemantico = false; }
+        if (!semanticoAtivo || !apiKey || !ghToken || runningSemantico) return;
+            runningSemantico = true;
+                if (manual) $('#mv_status_semantico').text('⟳ gerando análise...');
+                    try {
+                                const gists = await listarGists();
+                                        const todos = await lerConteudoGists(gists);
+                                                const resumos = todos.filter(r => r.tipo === 'resumo');
+                                                        if (resumos.length === 0) {
+                                                                        if (manual) $('#mv_status_semantico').text('— sem resumos para analisar');
+                                                                                    return;
+                                                        }
+
+                                                                const semanticoAnterior = todos.find(r => r.tipo === 'semantico');
+                                                                        const prompt = construirPromptSemantico(resumos, semanticoAnterior?.conteudo || null);
+
+                                                                                const res = await fetch('https://nano-gpt.com/api/v1/chat/completions', {
+                                                                                                method: 'POST',
+                                                                                                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                                                                                                                        body: JSON.stringify({ model: semanticoModel, messages: [{ role: 'user', content: prompt }], max_tokens: 1500, temperature: 0.5 })
+                                                                                });
+                                                                                        if (!res.ok) { if (manual) $('#mv_status_semantico').text(`✕ HTTP ${res.status}`); return; }
+                                                                                                const data = await res.json();
+                                                                                                        const texto = (data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '').trim();
+                                                                                                                if (!texto) { if (manual) $('#mv_status_semantico').text('✕ API retornou vazio'); return; }
+
+                                                                                                                        if (semanticoAnterior) {
+                                                                                                                                        await fetch(`https://api.github.com/gists/${semanticoAnterior.id}`, {
+                                                                                                                                                            method: 'DELETE',
+                                                                                                                                                                            headers: { 'Authorization': `Bearer ${ghToken}`, 'Accept': 'application/vnd.github+json' }
+                                                                                                                                        });
+                                                                                                                        }
+
+                                                                                                                                await criarGist(texto, null, 'semantico');
+                                                                                                                                        semanticoCache = texto;
+                                                                                                                                                ultimoSemantico = resumos.length;
+                                                                                                                                                        const config = JSON.parse(localStorage.getItem(LS) || '{}');
+                                                                                                                                                                config.ultimoSemantico = ultimoSemantico;
+                                                                                                                                                                        localStorage.setItem(LS, JSON.stringify(config));
+                                                                                                                                                                                if (manual) $('#mv_status_semantico').text('✓ análise semântica gerada');
+                                                                                                                                                                                        await injetarEstado();
+                                                                                                                                                                                                carregarListaNaUI();
+                    } catch(e) { if (manual) $('#mv_status_semantico').text(`✕ ${e.message.substring(0,40)}`); }
+                        finally { runningSemantico = false; }
 }
 
 async function verificarGatilhoSemantico() {
