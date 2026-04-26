@@ -28,6 +28,7 @@ let ultimoSemantico    = saved.ultimoSemantico    || 0;
 let ultimoProcessamento = 0;
 let running = false;
 let runningSemantico = false;
+let runningReconsolidacao = false;
 let resumosCache = [];
 let semanticoCache = null;
 
@@ -269,6 +270,45 @@ async function gerarAnaliseSemantica(manual = false) {
                         finally { runningSemantico = false; }
 }
 
+async function gerarReconsolidacao(manual = false) {
+    if (!apiKey || !ghToken || running || runningSemantico || runningReconsolidacao) return;
+    runningReconsolidacao = true;
+    if (manual) $('#mv_status_reconsolidacao').text('⟳ gerando reconsolidação...');
+    try {
+        const gists = await listarGists();
+        const todos = await lerConteudoGists(gists);
+        const semanticos = todos.filter(r => r.tipo === 'semantico');
+        if (semanticos.length === 0) {
+            if (manual) $('#mv_status_reconsolidacao').text('— sem análises semânticas disponíveis');
+            return;
+        }
+        const atual = semanticos[0].conteudo;
+        const historicos = semanticos.slice(1);
+        const prompt = construirPromptReconsolidacao(historicos, atual);
+        const res = await fetch('https://nano-gpt.com/api/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+            body: JSON.stringify({ model: 'deepseek/deepseek-v4-pro', messages: [{ role: 'user', content: prompt }], max_tokens: 4000, temperature: 0.5 })
+        });
+        if (!res.ok) { if (manual) $('#mv_status_reconsolidacao').text(`✕ HTTP ${res.status}`); return; }
+        const data = await res.json();
+        const texto = (data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '').trim();
+        if (!texto) { if (manual) $('#mv_status_reconsolidacao').text('✕ API retornou vazio'); return; }
+        const gist = await criarGist(texto, null, 'reconsolidacao');
+        if (gist) {
+            if (manual) $('#mv_status_reconsolidacao').text('✓ reconsolidação gerada');
+            await injetarEstado();
+            carregarListaNaUI();
+        } else if (manual) {
+            $('#mv_status_reconsolidacao').text('✕ falha ao salvar no GitHub');
+        }
+    } catch(e) {
+        if (manual) $('#mv_status_reconsolidacao').text(`✕ ${e.message.substring(0,40)}`);
+    } finally {
+        runningReconsolidacao = false;
+    }
+}
+
 async function verificarGatilhoSemantico() {
     if (!semanticoAtivo || !apiKey || !ghToken || runningSemantico) return;
     const gists = await listarGists();
@@ -454,7 +494,7 @@ function injectUI() {
     const $t = $('#extensions_settings2').length ? $('#extensions_settings2') : $('#extensions_settings');
     if (!$t.length) { setTimeout(injectUI, 1000); return; }
 
-    $t.append(`<div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>🧠 Mnemosyne</b> <span style="font-size:0.7em;color:#555">v0.8.0</span><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div><div class="inline-drawer-content" style="display:flex;flex-direction:column;gap:8px;padding:8px 0"><div style="display:flex;gap:12px;align-items:center"><span style="font-size:2em;font-weight:bold;color:#8b7355" id="mv_contador">0</span><span style="font-size:0.8em;color:#666">resumos</span><span style="font-size:2em;font-weight:bold;color:#7a8b5a;margin-left:12px" id="mv_contador_semantico">0</span><span style="font-size:0.8em;color:#666">análises</span></div><hr style="border-color:#222;margin:4px 0"><div style="font-size:0.75em;text-transform:uppercase;color:#8b7355;letter-spacing:1px">📝 Camada 1 — Resumos</div>`}<input id="mv_api_key" type="password" class="text_pole" value="${apiKey}" placeholder="API Key NanoGPT"><input id="mv_gh_token" type="password" class="text_pole" value="${ghToken}" placeholder="Token GitHub (gist)"><input id="mv_model" type="text" class="text_pole" value="${menteModel}" placeholder="Modelo (glm-5.1)"><input id="mv_interval" type="number" class="text_pole" value="${menteInterval}" min="10" max="200" placeholder="Mensagens por bloco"><label style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Prompt de Resumo</label><textarea id="mv_prompt" class="text_pole" rows="4" style="resize:vertical;font-size:0.78em">${mentePrompt}</textarea><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#aaa"><input type="checkbox" id="mv_ativa" ${menteAtiva ? 'checked' : ''}> Camada 1 ativa</label><div style="display:flex;gap:6px;flex-wrap:wrap"><input id="mv_save" type="button" class="menu_button" value="💾 Salvar"><input id="mv_now" type="button" class="menu_button" value="↺ Resumir agora"><input id="mv_salvar_tudo" type="button" class="menu_button" value="📦 Salvar tudo"></div><div style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Bloco específico</div><div style="display:flex;gap:6px;align-items:center"><span style="font-size:0.85em;color:#aaa">Bloco #</span><input id="mv_bloco_num" type="number" class="text_pole" value="1" min="1" style="width:70px"><input id="mv_bloco_btn" type="button" class="menu_button" value="📝 Resumir bloco"></div><hr style="border-color:#222;margin:4px 0"><div style="font-size:0.75em;text-transform:uppercase;color:#7a8b5a;letter-spacing:1px">🧠 Camada 2 — Análise Semântica</div><input id="mv_model_semantico" type="text" class="text_pole" value="${semanticoModel}" placeholder="Modelo (glm-5.1)"><input id="mv_semantico_intervalo" type="number" class="text_pole" value="${semanticoIntervalo}" min="1" max="20" placeholder="Gatilho a cada N Gists novos"><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#aaa"><input type="checkbox" id="mv_semantico_ativa" ${semanticoAtivo ? 'checked' : ''}> Camada 2 ativa</label><div style="display:flex;gap:6px"><input id="mv_semantico_btn" type="button" class="menu_button" value="📊 Gerar análise agora"></div><div id="mv_status_semantico" style="font-size:0.82em;color:#aaa">aguardando...</div><hr style="border-color:#222;margin:4px 0"><div style="font-size:0.75em;text-transform:uppercase;color:#b58a5a;letter-spacing:1px">🧠 Camada 3 — Reconsolidação</div><div style="display:flex;gap:6px"><input id="mv_reconsolidacao_btn" type="button" class="menu_button" value="📊 Gerar reconsolidação"></div><div id="mv_status_reconsolidacao" style="font-size:0.82em;color:#aaa">aguardando...</div><hr style="border-color:#222;margin:4px 0"><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#e8a0a0"><input type="checkbox" id="mv_injetar_rp" ${injetarNoRP ? 'checked' : ''}> Injetar no RP (resumos + semântico)</label><div id="mv_status" style="font-size:0.82em;color:#aaa">pronto</div><div style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Últimos Gists</div><div id="mv_lista" style="max-height:200px;overflow-y:auto"><div style="color:#555;font-size:0.78em">configure o token GitHub</div></div></div></div>`);
+    $t.append(`<div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>🧠 Mnemosyne</b> <span style="font-size:0.7em;color:#555">v0.8.0</span><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div><div class="inline-drawer-content" style="display:flex;flex-direction:column;gap:8px;padding:8px 0"><div style="display:flex;gap:12px;align-items:center"><span style="font-size:2em;font-weight:bold;color:#8b7355" id="mv_contador">0</span><span style="font-size:0.8em;color:#666">resumos</span><span style="font-size:2em;font-weight:bold;color:#7a8b5a;margin-left:12px" id="mv_contador_semantico">0</span><span style="font-size:0.8em;color:#666">análises</span></div><hr style="border-color:#222;margin:4px 0"><div style="font-size:0.75em;text-transform:uppercase;color:#8b7355;letter-spacing:1px">📝 Camada 1 — Resumos</div><input id="mv_api_key" type="password" class="text_pole" value="${apiKey}" placeholder="API Key NanoGPT"><input id="mv_gh_token" type="password" class="text_pole" value="${ghToken}" placeholder="Token GitHub (gist)"><input id="mv_model" type="text" class="text_pole" value="${menteModel}" placeholder="Modelo (glm-5.1)"><input id="mv_interval" type="number" class="text_pole" value="${menteInterval}" min="10" max="200" placeholder="Mensagens por bloco"><label style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Prompt de Resumo</label><textarea id="mv_prompt" class="text_pole" rows="4" style="resize:vertical;font-size:0.78em">${mentePrompt}</textarea><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#aaa"><input type="checkbox" id="mv_ativa" ${menteAtiva ? 'checked' : ''}> Camada 1 ativa</label><div style="display:flex;gap:6px;flex-wrap:wrap"><input id="mv_save" type="button" class="menu_button" value="💾 Salvar"><input id="mv_now" type="button" class="menu_button" value="↺ Resumir agora"><input id="mv_salvar_tudo" type="button" class="menu_button" value="📦 Salvar tudo"></div><div style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Bloco específico</div><div style="display:flex;gap:6px;align-items:center"><span style="font-size:0.85em;color:#aaa">Bloco #</span><input id="mv_bloco_num" type="number" class="text_pole" value="1" min="1" style="width:70px"><input id="mv_bloco_btn" type="button" class="menu_button" value="📝 Resumir bloco"></div><hr style="border-color:#222;margin:4px 0"><div style="font-size:0.75em;text-transform:uppercase;color:#7a8b5a;letter-spacing:1px">🧠 Camada 2 — Análise Semântica</div><input id="mv_model_semantico" type="text" class="text_pole" value="${semanticoModel}" placeholder="Modelo (glm-5.1)"><input id="mv_semantico_intervalo" type="number" class="text_pole" value="${semanticoIntervalo}" min="1" max="20" placeholder="Gatilho a cada N Gists novos"><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#aaa"><input type="checkbox" id="mv_semantico_ativa" ${semanticoAtivo ? 'checked' : ''}> Camada 2 ativa</label><div style="display:flex;gap:6px"><input id="mv_semantico_btn" type="button" class="menu_button" value="📊 Gerar análise agora"></div><div id="mv_status_semantico" style="font-size:0.82em;color:#aaa">aguardando...</div><hr style="border-color:#222;margin:4px 0"><div style="font-size:0.75em;text-transform:uppercase;color:#b58a5a;letter-spacing:1px">🧠 Camada 3 — Reconsolidação</div><div style="display:flex;gap:6px"><input id="mv_reconsolidacao_btn" type="button" class="menu_button" value="📊 Gerar reconsolidação"></div><div id="mv_status_reconsolidacao" style="font-size:0.82em;color:#aaa">aguardando...</div><hr style="border-color:#222;margin:4px 0"><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#e8a0a0"><input type="checkbox" id="mv_injetar_rp" ${injetarNoRP ? 'checked' : ''}> Injetar no RP (resumos + semântico)</label><div id="mv_status" style="font-size:0.82em;color:#aaa">pronto</div><div style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Últimos Gists</div><div id="mv_lista" style="max-height:200px;overflow-y:auto"><div style="color:#555;font-size:0.78em">configure o token GitHub</div></div></div></div>`);
 
     $('#mv_prompt').val(mentePrompt);
     $('#mv_save').on('click', () => {
