@@ -1,11 +1,11 @@
 // ============================================
 // MNEMOSYNE v0.6.0
 // Resumos como Gists privados no GitHub
-// Pasta: public/scripts/extensions/third-party/
 // ============================================
 
-import { getContext, saveMetadataDebounced } from '../../../../public/scripts/extensions.js';
-import { eventSource, event_types, setExtensionPrompt } from '../../../../public/scripts/script.js';
+import { getContext, saveMetadataDebounced } from '../../../extensions.js';
+import { eventSource, event_types, setExtensionPrompt } from '../../../../script.js';
+
 const LS = 'mnemosyne-settings';
 let saved = {};
 try {
@@ -13,13 +13,13 @@ try {
     if (raw) saved = JSON.parse(raw);
 } catch(e) { console.warn('[Mnemosyne] Config corrompida'); localStorage.removeItem(LS); }
 
-let apiKey         = saved.apiKey         || '';
-let ghToken        = saved.ghToken        || '';
-let menteModel     = saved.menteModel     || 'deepseek-v3.2';
-let menteInterval  = saved.menteInterval  || 50;
-let menteAtiva     = saved.menteAtiva !== undefined ? saved.menteAtiva : true;
-let mentePrompt    = saved.mentePrompt    || defaultPrompt();
-let injetarNoRP    = saved.injetarNoRP !== undefined ? saved.injetarNoRP : false;
+let apiKey        = saved.apiKey        || '';
+let ghToken       = saved.ghToken       || '';
+let menteModel    = saved.menteModel    || 'deepseek-v3.2';
+let menteInterval = saved.menteInterval || 50;
+let menteAtiva    = saved.menteAtiva !== undefined ? saved.menteAtiva : true;
+let mentePrompt   = saved.mentePrompt   || defaultPrompt();
+let injetarNoRP   = saved.injetarNoRP !== undefined ? saved.injetarNoRP : false;
 
 let ultimoProcessamento = 0;
 let running = false;
@@ -259,35 +259,6 @@ async function processarBlocoEspecifico(numeroBloco) {
     finally { running = false; }
 }
 
-// ==================== UI ====================
-
-async function carregarListaNaUI() {
-    if (!ghToken) {
-        $('#mv_lista').html('<div style="color:#555;font-size:0.78em">configure o token GitHub</div>');
-        $('#mv_contador').text('0');
-        return;
-    }
-    try {
-        const gists = await listarGists();
-        const resumos = await lerConteudoGists(gists);
-        resumosCache = resumos;
-        const lista = resumos.slice(-5).reverse().map(r => {
-            const data = new Date(r.data);
-            const hora = `${String(data.getHours()).padStart(2,'0')}:${String(data.getMinutes()).padStart(2,'0')}`;
-            const tags = extrairTags(r.conteudo);
-            return `<div style="font-size:0.78em;color:#888;margin:2px 0;padding:3px 0;border-bottom:1px solid #222">
-              📝 <b>Bloco ${r.bloco}</b> · ${hora}<br>
-              ${r.conteudo?.substring(0, 100)}${(r.conteudo?.length > 100) ? '...' : ''}
-              ${tags.length ? '<br><span style="color:#666;font-size:0.85em">🏷 ' + tags.join(', ') + '</span>' : ''}
-            </div>`;
-        }).join('');
-        $('#mv_lista').html(lista || '<div style="color:#555;font-size:0.78em">nenhum Gist encontrado</div>');
-        $('#mv_contador').text(resumos.length);
-    } catch(e) {
-        $('#mv_lista').html('<div style="color:#a55;font-size:0.78em">erro ao carregar</div>');
-    }
-}
-
 async function salvarTudo() {
     if (!menteAtiva || !apiKey || !ghToken || running) return;
     running = true;
@@ -329,38 +300,74 @@ async function salvarTudo() {
     finally { running = false; }
 }
 
+// ==================== UI ====================
+
+async function carregarListaNaUI() {
+    if (!ghToken) {
+        $('#mv_lista').html('<div style="color:#555;font-size:0.78em">configure o token GitHub</div>');
+        $('#mv_contador').text('0');
+        return;
+    }
+    try {
+        const gists = await listarGists();
+        const resumos = await lerConteudoGists(gists);
+        resumosCache = resumos;
+        const lista = resumos.slice(-5).reverse().map(r => {
+            const data = new Date(r.data);
+            const hora = `${String(data.getHours()).padStart(2,'0')}:${String(data.getMinutes()).padStart(2,'0')}`;
+            const tags = extrairTags(r.conteudo);
+            return `<div style="font-size:0.78em;color:#888;margin:2px 0;padding:3px 0;border-bottom:1px solid #222">
+                📝 <b>Bloco ${r.bloco}</b> · ${hora}<br>
+                ${r.conteudo?.substring(0, 100)}${(r.conteudo?.length > 100) ? '...' : ''}
+                ${tags.length ? '<br><span style="color:#666;font-size:0.85em">🏷 ' + tags.join(', ') + '</span>' : ''}
+            </div>`;
+        }).join('');
+        $('#mv_lista').html(lista || '<div style="color:#555;font-size:0.78em">nenhum Gist encontrado</div>');
+        $('#mv_contador').text(resumos.length);
+    } catch(e) {
+        $('#mv_lista').html('<div style="color:#a55;font-size:0.78em">erro ao carregar</div>');
+    }
+}
+
 function injectUI() {
     const $t = $('#extensions_settings2').length ? $('#extensions_settings2') : $('#extensions_settings');
     if (!$t.length) { setTimeout(injectUI, 1000); return; }
+
     $t.append(`<div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>🧠 Mnemosyne</b> <span style="font-size:0.7em;color:#555">v0.6.0</span><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div><div class="inline-drawer-content" style="display:flex;flex-direction:column;gap:8px;padding:8px 0"><div style="display:flex;gap:12px;align-items:center"><span style="font-size:2em;font-weight:bold;color:#8b7355" id="mv_contador">0</span><span style="font-size:0.8em;color:#666">Gists</span></div><input id="mv_api_key" type="password" class="text_pole" value="${apiKey}" placeholder="API Key NanoGPT"><input id="mv_gh_token" type="password" class="text_pole" value="${ghToken}" placeholder="Token GitHub (gist)"><input id="mv_model" type="text" class="text_pole" value="${menteModel}" placeholder="Modelo"><input id="mv_interval" type="number" class="text_pole" value="${menteInterval}" min="10" max="200" placeholder="Mensagens por bloco"><label style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Prompt de Resumo (editável)</label><textarea id="mv_prompt" class="text_pole" rows="6" style="resize:vertical;font-size:0.78em">${mentePrompt}</textarea><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#aaa"><input type="checkbox" id="mv_ativa" ${menteAtiva ? 'checked' : ''}> Módulo ativo</label><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#e8a0a0"><input type="checkbox" id="mv_injetar_rp" ${injetarNoRP ? 'checked' : ''}> Injetar estado no RP (lê Gists)</label><div style="display:flex;gap:6px;flex-wrap:wrap"><input id="mv_save" type="button" class="menu_button" value="💾 Salvar"><input id="mv_now" type="button" class="menu_button" value="↺ Resumir agora"><input id="mv_salvar_tudo" type="button" class="menu_button" value="📦 Salvar tudo"></div><div style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Bloco específico</div><div style="display:flex;gap:6px;align-items:center"><span style="font-size:0.85em;color:#aaa">Bloco #</span><input id="mv_bloco_num" type="number" class="text_pole" value="1" min="1" style="width:70px"><input id="mv_bloco_btn" type="button" class="menu_button" value="📝 Resumir bloco"></div><div id="mv_status" style="font-size:0.82em;color:#aaa">pronto</div><div style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Últimos Gists</div><div id="mv_lista" style="max-height:200px;overflow-y:auto"><div style="color:#555;font-size:0.78em">configure o token GitHub</div></div></div></div>`);
+
     $('#mv_prompt').val(mentePrompt);
+
     $('#mv_save').on('click', () => {
-        apiKey         = $('#mv_api_key').val().trim();
-        ghToken        = $('#mv_gh_token').val().trim();
-        menteModel     = $('#mv_model').val().trim() || 'deepseek-v3.2';
-        menteInterval  = parseInt($('#mv_interval').val()) || 50;
-        menteAtiva     = $('#mv_ativa').prop('checked');
-        mentePrompt    = $('#mv_prompt').val().trim() || defaultPrompt();
-        injetarNoRP    = $('#mv_injetar_rp').prop('checked');
+        apiKey        = $('#mv_api_key').val().trim();
+        ghToken       = $('#mv_gh_token').val().trim();
+        menteModel    = $('#mv_model').val().trim() || 'deepseek-v3.2';
+        menteInterval = parseInt($('#mv_interval').val()) || 50;
+        menteAtiva    = $('#mv_ativa').prop('checked');
+        mentePrompt   = $('#mv_prompt').val().trim() || defaultPrompt();
+        injetarNoRP   = $('#mv_injetar_rp').prop('checked');
         localStorage.setItem(LS, JSON.stringify({ apiKey, ghToken, menteModel, menteInterval, menteAtiva, mentePrompt, injetarNoRP }));
         $('#mv_status').text('✓ salvo (tudo)');
         carregarListaNaUI();
     });
+
     $('#mv_now').on('click', () => {
         mentePrompt = $('#mv_prompt').val().trim() || defaultPrompt();
         ultimoProcessamento = Math.max(0, (getContext().chat?.length||0) - menteInterval);
         processarBloco();
     });
+
     $('#mv_bloco_btn').on('click', () => {
         const n = parseInt($('#mv_bloco_num').val()) || 1;
         if (n < 1) { $('#mv_status').text('✕ número inválido'); return; }
         mentePrompt = $('#mv_prompt').val().trim() || defaultPrompt();
         processarBlocoEspecifico(n);
     });
+
     $('#mv_salvar_tudo').on('click', () => {
         mentePrompt = $('#mv_prompt').val().trim() || defaultPrompt();
         salvarTudo();
     });
+
     $('#mv_injetar_rp').on('change', async () => {
         injetarNoRP = $('#mv_injetar_rp').prop('checked');
         const config = JSON.parse(localStorage.getItem(LS) || '{}');
@@ -375,4 +382,7 @@ function injectUI() {
             carregarListaNaUI();
             $('#mv_status').text(`⚠ injeção LIGADA — ${resumosCache.length} Gists`);
         }
-   
+    });
+}
+
+function syncUltimoProcessamento() { ultimoProc
