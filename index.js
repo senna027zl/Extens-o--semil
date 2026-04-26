@@ -1,18 +1,18 @@
 // ============================================
-// MUNDO VIVO 2.0
-// Módulo 1: MENTE — Camada 1 (Episódica + Somática)
-// v0.2.3 — Toggle compila TODOS os resumos acumulados
+// MNEMOSYNE
+// Módulo de Memória — Camada 1 (Episódica + Somática)
+// v0.3.0 — Toggle compila TODOS os resumos acumulados
 // ============================================
 
 import { getContext, saveMetadataDebounced } from '../../../extensions.js';
 import { eventSource, event_types, setExtensionPrompt } from '../../../../script.js';
 
-const LS = 'mundo-vivo-2-settings';
+const LS = 'mnemosyne-settings';
 let saved = {};
 try {
     const raw = localStorage.getItem(LS);
     if (raw) saved = JSON.parse(raw);
-} catch(e) { console.warn('[Mente] Config corrompida'); localStorage.removeItem(LS); }
+} catch(e) { console.warn('[Mnemosyne] Config corrompida'); localStorage.removeItem(LS); }
 
 let apiKey        = saved.apiKey        || '';
 let menteModel    = saved.menteModel    || 'deepseek-v3.2';
@@ -44,10 +44,10 @@ document.head.appendChild(lfScript);
 let db;
 lfScript.onload = () => {
     try {
-        db = localforage.createInstance({ name: 'mente-hanna', storeName: 'memorias' });
-        console.log('[Mente] Banco IndexedDB inicializado');
+        db = localforage.createInstance({ name: 'mnemosyne-hanna', storeName: 'memorias' });
+        console.log('[Mnemosyne] Banco IndexedDB inicializado');
         carregarMemoriasNaUI();
-    } catch(e) { console.error('[Mente] Falha no banco:', e); }
+    } catch(e) { console.error('[Mnemosyne] Falha no banco:', e); }
 };
 
 function construirPrompt(ctx) {
@@ -87,7 +87,7 @@ async function salvarMemoria(resumo, numeroBloco) {
         externalizada: false, peso: 1.0, ultimoAcesso: null, suprimida: false,
         expectativaQuebrada: false, conexoes: [], interferencia: null
     });
-    console.log(`[Mente] Resumo do bloco ${numeroBloco} salvo`);
+    console.log(`[Mnemosyne] Resumo do bloco ${numeroBloco} salvo`);
 }
 
 function extrairTags(texto) {
@@ -122,11 +122,11 @@ async function atualizarMenteEstado(resumo) {
     if (!ctx.chatMetadata) return;
 
     const estado = extrairEstado(resumo);
-    ctx.chatMetadata['mente_estado'] = estado;
+    ctx.chatMetadata['mnemosyne_estado'] = estado;
     saveMetadataDebounced();
 
     if (!injetarNoRP) {
-        setExtensionPrompt('MENTE_ESTADO', '', 1, 1);
+        setExtensionPrompt('MNEMOSYNE_ESTADO', '', 1, 1);
         return;
     }
 
@@ -134,7 +134,7 @@ async function atualizarMenteEstado(resumo) {
     const resumos = todasMemorias.filter(m => m.tipo === 'resumo');
 
     if (resumos.length === 0) {
-        setExtensionPrompt('MENTE_ESTADO', '', 1, 1);
+        setExtensionPrompt('MNEMOSYNE_ESTADO', '', 1, 1);
         return;
     }
 
@@ -147,9 +147,9 @@ async function atualizarMenteEstado(resumo) {
     if (estadoGeral.contencao >= 1) instrucao += 'tendência geral a contenção e silêncio. ';
 
     if (instrucao) {
-        setExtensionPrompt('MENTE_ESTADO', `[Memória acumulada: ${instrucao.trim()}]`, 1, 1);
+        setExtensionPrompt('MNEMOSYNE_ESTADO', `[Memória acumulada: ${instrucao.trim()}]`, 1, 1);
     } else {
-        setExtensionPrompt('MENTE_ESTADO', '', 1, 1);
+        setExtensionPrompt('MNEMOSYNE_ESTADO', '', 1, 1);
     }
 }
 
@@ -229,14 +229,14 @@ function carregarMemoriasNaUI() {
 function injectUI() {
     const $t = $('#extensions_settings2').length ? $('#extensions_settings2') : $('#extensions_settings');
     if (!$t.length) { setTimeout(injectUI, 1000); return; }
-    $t.append(`<div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>🧠 Mente</b> <span style="font-size:0.7em;color:#555">Blocos · v0.2.3</span><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div><div class="inline-drawer-content" style="display:flex;flex-direction:column;gap:8px;padding:8px 0"><div style="display:flex;gap:12px;align-items:center"><span style="font-size:2em;font-weight:bold;color:#8b7355" id="mente_contador">0</span><span style="font-size:0.8em;color:#666">resumos</span></div><input id="mente_api_key" type="password" class="text_pole" value="${apiKey}" placeholder="API Key NanoGPT"><input id="mente_model" type="text" class="text_pole" value="${menteModel}" placeholder="Modelo"><input id="mente_interval" type="number" class="text_pole" value="${menteInterval}" min="10" max="200" placeholder="Mensagens por bloco"><label style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Prompt de Resumo (editável)</label><textarea id="mente_prompt" class="text_pole" rows="6" style="resize:vertical;font-size:0.78em">${mentePrompt}</textarea><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#aaa"><input type="checkbox" id="mente_ativa" ${menteAtiva ? 'checked' : ''}> Módulo ativo</label><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#e8a0a0"><input type="checkbox" id="mente_injetar_rp"> Injetar estado no RP (vê tudo acumulado)</label><div style="display:flex;gap:6px"><input id="mente_save" type="button" class="menu_button" value="💾 Salvar"><input id="mente_now" type="button" class="menu_button" value="↺ Resumir agora"></div><div style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Bloco específico</div><div style="display:flex;gap:6px;align-items:center"><span style="font-size:0.85em;color:#aaa">Bloco #</span><input id="mente_bloco_num" type="number" class="text_pole" value="1" min="1" style="width:70px"><input id="mente_bloco_btn" type="button" class="menu_button" value="📝 Resumir bloco"></div><div id="mente_status" style="font-size:0.82em;color:#aaa">pronto</div><div style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Últimos resumos</div><div id="mente_memorias" style="max-height:200px;overflow-y:auto"><div style="color:#555;font-size:0.78em">carregando...</div></div></div></div>`);
+    $t.append(`<div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>🧠 Mnemosyne</b> <span style="font-size:0.7em;color:#555">v0.3.0</span><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div><div class="inline-drawer-content" style="display:flex;flex-direction:column;gap:8px;padding:8px 0"><div style="display:flex;gap:12px;align-items:center"><span style="font-size:2em;font-weight:bold;color:#8b7355" id="mente_contador">0</span><span style="font-size:0.8em;color:#666">resumos</span></div><input id="mente_api_key" type="password" class="text_pole" value="${apiKey}" placeholder="API Key NanoGPT"><input id="mente_model" type="text" class="text_pole" value="${menteModel}" placeholder="Modelo"><input id="mente_interval" type="number" class="text_pole" value="${menteInterval}" min="10" max="200" placeholder="Mensagens por bloco"><label style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Prompt de Resumo (editável)</label><textarea id="mente_prompt" class="text_pole" rows="6" style="resize:vertical;font-size:0.78em">${mentePrompt}</textarea><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#aaa"><input type="checkbox" id="mente_ativa" ${menteAtiva ? 'checked' : ''}> Módulo ativo</label><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#e8a0a0"><input type="checkbox" id="mente_injetar_rp"> Injetar estado no RP (vê tudo acumulado)</label><div style="display:flex;gap:6px"><input id="mente_save" type="button" class="menu_button" value="💾 Salvar"><input id="mente_now" type="button" class="menu_button" value="↺ Resumir agora"></div><div style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Bloco específico</div><div style="display:flex;gap:6px;align-items:center"><span style="font-size:0.85em;color:#aaa">Bloco #</span><input id="mente_bloco_num" type="number" class="text_pole" value="1" min="1" style="width:70px"><input id="mente_bloco_btn" type="button" class="menu_button" value="📝 Resumir bloco"></div><div id="mente_status" style="font-size:0.82em;color:#aaa">pronto</div><div style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Últimos resumos</div><div id="mente_memorias" style="max-height:200px;overflow-y:auto"><div style="color:#555;font-size:0.78em">carregando...</div></div></div></div>`);
     $('#mente_prompt').val(mentePrompt);
     $('#mente_save').on('click', () => {
         apiKey=$('#mente_api_key').val().trim(); menteModel=$('#mente_model').val().trim()||'deepseek-v3.2';
         menteInterval=parseInt($('#mente_interval').val())||50; menteAtiva=$('#mente_ativa').prop('checked');
         mentePrompt=$('#mente_prompt').val().trim()||defaultPrompt();
         localStorage.setItem(LS, JSON.stringify({ apiKey, menteModel, menteInterval, menteAtiva, mentePrompt }));
-        $('#mente_status').text('✓ salvo');
+        $('# mente_status').text('✓ salvo');
     });
     $('#mente_now').on('click', () => {
         mentePrompt=$('#mente_prompt').val().trim()||defaultPrompt();
@@ -252,7 +252,7 @@ function injectUI() {
     $('#mente_injetar_rp').on('change', async () => {
         injetarNoRP=$('#mente_injetar_rp').prop('checked');
         if(!injetarNoRP){
-            setExtensionPrompt('MENTE_ESTADO','',1,1);
+            setExtensionPrompt('MNEMOSYNE_ESTADO','',1,1);
             $('#mente_status').text('⚠ injeção DESLIGADA');
         } else {
             $('#mente_status').text('⟳ compilando memórias...');
@@ -277,4 +277,4 @@ eventSource.on(event_types.MESSAGE_RECEIVED, () => {
     if (total - ultimoProcessamento >= menteInterval) { ultimoProcessamento = total; processarBloco(); }
 });
 setTimeout(injectUI, 3000);
-console.log('[Mente] Módulo carregado — v0.2.3');
+console.log('[Mnemosyne] Módulo carregado — v0.3.0');
