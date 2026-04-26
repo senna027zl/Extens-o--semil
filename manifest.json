@@ -1,7 +1,7 @@
 {
   "display_name": "Mnemosyne",
-  "name": "mnemosyne",
-  "version": "0.4.0",
+  "name": "mundo-vivo-2",
+  "version": "0.6.0",
   "description": "Sistema cognitivo de memória para Hanna. Resumos como Gists privados no GitHub.",
   "js": "index.js",
   "css": "style.css",
