@@ -2,7 +2,7 @@
   "display_name": "Mnemosyne",
   "name": "mundo-vivo-2",
   "version": "0.3.0",
-  "description": "Módulo Mente — Blocos de resumo. Toggle compila todo o histórico acumulado.",
+  "description": "Sistema cognitivo de memória para Hanna. Resumos por bloco, injeção acumulada via toggle.",
   "js": "index.js",
   "css": "style.css",
   "author": "Senna",
