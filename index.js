@@ -41,6 +41,13 @@ Produza um resumo denso em português com:
 4. PADRÕES: Algum padrão novo detectado no comportamento do Senna ou no dela mesma?
 5. SINAL SOMÁTICO: Alguma reação corporal significativa da Hanna (contração, expansão, ausência)?
 
+Regras de tom:
+- Escreva como um observador treinado, não como um personagem de roleplay.
+- Sem floreios, sem encenação, sem imitar a voz da Hanna.
+- Tom seco, analítico, preciso.
+- Nada de "Hanna pensa consigo mesma", "ela se pergunta", "num gesto quase imperceptível".
+- Sem conclusões sobre o futuro da relação. Apenas o que está no bloco.
+
 Formato: texto corrido, 3-5 parágrafos. Sem markdown, sem títulos.`;
 }
 
@@ -236,20 +243,32 @@ async function injetarEstado() {
     if (semanticos.length > 0) semanticoCache = semanticos[0].conteudo;
     if (resumos.length === 0 && semanticos.length === 0) { setExtensionPrompt('MNEMOSYNE_ESTADO', '', 1, 1); return; }
 
-    let injecao = '';
+    // Injeta resumos normalmente
     if (resumos.length > 0) {
         const textoResumos = resumos.slice(-10).map(r => `[Bloco ${r.bloco}]: ${r.conteudo}`).join('\n\n');
         const estadoGeral = extrairEstado(textoResumos);
+        let injecao = '';
         if (estadoGeral.vulnerabilidade >= 7) injecao += 'histórico de vulnerabilidade — instinto de proteção ativo. ';
         if (estadoGeral.testeLimite) injecao += 'padrão de teste de limites recorrente no histórico. ';
         if (estadoGeral.contencao >= 1) injecao += 'tendência geral a contenção e silêncio. ';
-    }
-    if (semanticos.length > 0) {
-        injecao += '\n[Análise Semântica: ' + semanticos[0].conteudo.substring(0, 400) + ']';
+        if (injecao) setExtensionPrompt('MNEMOSYNE_ESTADO', `[Memória acumulada: ${injecao.trim()}]`, 1, 1);
+        else setExtensionPrompt('MNEMOSYNE_ESTADO', '', 1, 1);
     }
 
-    if (injecao) setExtensionPrompt('MNEMOSYNE_ESTADO', `[Memória acumulada: ${injecao.trim()}]`, 1, 1);
-    else setExtensionPrompt('MNEMOSYNE_ESTADO', '', 1, 1);
+    // Injeta análise semântica como extrato de 3 frases essenciais, com fallback
+    if (semanticos.length > 0) {
+        const texto = semanticos[0].conteudo;
+        const frases = texto.split(/[.!?]\s+/).filter(f => f.trim().length > 0);
+        const essenciais = frases.filter(f =>
+            f.includes('acredito') || f.includes('aprendi') || f.includes('percebi') ||
+            f.includes('corpo') || f.includes('padrão') || f.includes('espero') ||
+            f.includes('assusta') || f.includes('admito') || f.includes('medo')
+        );
+        const extrato = (essenciais.length > 0 ? essenciais : frases).slice(0, 3).join('. ') + '.';
+        if (extrato.length > 2) {
+            setExtensionPrompt('MNEMOSYNE_INSIGHT', `[Insight: ${extrato}]`, 0, 2);
+        }
+    }
 
     const ctx = getContext();
     if (ctx.chatMetadata) {
