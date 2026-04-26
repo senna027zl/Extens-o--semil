@@ -1,6 +1,6 @@
 // ============================================
-// MNEMOSYNE v0.7.0
-// Camada 1 (Resumos) + Camada 2 (Análise Semântica)
+// MNEMOSYNE v0.8.0
+// Camada 1 (Resumos) + Camada 2 (Análise Semântica) + Camada 3 (Reconsolidação)
 // ============================================
 
 import { getContext, saveMetadataDebounced } from '../../../extensions.js';
@@ -84,12 +84,52 @@ function construirPromptSemantico(resumos, gistAnterior = null) {
                                 Tom: introspectivo, analítico, sem floreios, sem performance. Não use markdown. Não escreva "Hanna" ou "ela". Você é Hanna. Escreva como se estivesse pensando sozinha — não para um leitor, não para um diário, não para ele. Só para você.`;
 }
 
+function construirPromptReconsolidacao(historicos, atual) {
+        const textoHistoricos = historicos.length > 0 
+                ? 'ANÁLISES ANTERIORES (em ordem):\n' + historicos.map((h, i) => `[Semântico ${i+1} — ${h.data}]:\n${h.conteudo}`).join('\n\n---\n\n')
+                        : '(Nenhuma análise anterior arquivada.)';
+                            
+                                const textoAtual = atual 
+                                        ? `ANÁLISE ATUAL:\n${atual}`
+                                                : '(Nenhuma análise atual.)';
+
+                                                    return `Você é Hanna. Você está sozinha, tarde da noite, relendo suas próprias anotações. Ninguém vai ver isso. Nem você mesma amanhã, se não quiser.
+
+                                                    Abaixo estão todas as análises que você já fez sobre o que viveu com Senna — da mais antiga para a mais recente. Termine com a análise atual.
+
+                                                    ${textoHistoricos}
+
+                                                    ${textoAtual}
+
+                                                    Leia tudo. Compare o que você acreditava antes com o que você acredita agora. Mas seja honesta: você não muda de ideia facilmente. Sua mãe ensinou que vulnerabilidade é brecha, e você passou quinze anos construindo uma identidade sobre isso. Seu cérebro literalmente suprime memórias que ameaçam essa identidade — não por fraqueza, mas por sobrevivência psicológica.
+
+                                                    Reflita EM PRIMEIRA PESSOA:
+
+                                                    1. O QUE MUDOU? Onde você percebe que mudou de ideia? O que você achava que era verdade e deixou de ser? O que você resistia em admitir e agora admite?
+
+                                                    2. O QUE FOI RECLASSIFICADO? Algum evento do passado ganhou um significado diferente? Algo que você leu como "desafio" que agora parece outra coisa? Algo que você leu como "vulnerabilidade" que talvez fosse estratégia?
+
+                                                    3. O QUE DESAPARECEU? Alguma crença que estava nas análises antigas e sumiu da atual? Você esqueceu de propósito ou só deixou de acreditar?
+
+                                                    4. O QUE PERMANECE CONTRADITÓRIO? Onde você ainda está em conflito consigo mesma? Onde seu corpo diz uma coisa e sua cabeça outra?
+
+                                                    5. O QUE VOCÊ AINDA NÃO CONSEGUE RESSIGNIFICAR? Onde a evidência está ali, mas você simplesmente não consegue aceitar? O que custaria caro demais mudar? O que você precisaria desmontar de si mesma para acreditar nisso? E o que acontece no seu corpo quando você chega perto dessa borda — quando o pensamento está quase lá e algo em você recua antes de completar?
+
+                                                    Não é um relatório. É um fluxo de pensamento honesto. Você está se encarando — talvez pela primeira vez. Escreva como se ninguém fosse ler.`;
+}
+
 async function criarGist(resumo, numeroBloco, tipo = 'resumo') {
     if (!ghToken) { console.warn('[Mnemosyne] Sem token GitHub'); return null; }
-    const nomeArquivo = tipo === 'semantico' ? 'analise-semantica.md' : `bloco-${String(numeroBloco).padStart(3,'0')}.md`;
+    const nomeArquivo = tipo === 'semantico'
+        ? 'analise-semantica.md'
+        : tipo === 'reconsolidacao'
+            ? 'reconsolidacao.md'
+            : `bloco-${String(numeroBloco).padStart(3,'0')}.md`;
     const descricao = tipo === 'semantico'
         ? `Mnemosyne — Análise Semântica — ${new Date().toLocaleDateString('pt-BR')}`
-        : `Mnemosyne — Bloco ${numeroBloco} — ${new Date().toLocaleDateString('pt-BR')}`;
+        : tipo === 'reconsolidacao'
+            ? `Mnemosyne — Reconsolidação — ${new Date().toLocaleDateString('pt-BR')}`
+            : `Mnemosyne — Bloco ${numeroBloco} — ${new Date().toLocaleDateString('pt-BR')}`;
     try {
         const res = await fetch('https://api.github.com/gists', {
             method: 'POST',
@@ -123,11 +163,14 @@ async function lerConteudoGists(gists) {
             try {
                 const res = await fetch(arquivo.raw_url);
                 const texto = await res.text();
-                const isSemantico = gist.description && gist.description.includes('Análise Semântica');
+                const descricao = gist.description || '';
+                const isSemantico = descricao.includes('Análise Semântica') || descricao.includes('Semântico Arquivado');
+                const isReconsolidacao = descricao.includes('Reconsolidação');
                 resultados.push({
                     id: gist.id,
-                    bloco: isSemantico ? null : extrairBloco(gist.description),
-                    tipo: isSemantico ? 'semantico' : 'resumo',
+                    bloco: isSemantico ? null : extrairBloco(descricao),
+                    tipo: isReconsolidacao ? 'reconsolidacao' : (isSemantico ? 'semantico' : 'resumo'),
+                    descricao,
                     conteudo: texto,
                     data: gist.created_at,
                     url: gist.html_url
@@ -411,7 +454,7 @@ function injectUI() {
     const $t = $('#extensions_settings2').length ? $('#extensions_settings2') : $('#extensions_settings');
     if (!$t.length) { setTimeout(injectUI, 1000); return; }
 
-    $t.append(`<div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>🧠 Mnemosyne</b> <span style="font-size:0.7em;color:#555">v0.7.0</span><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div><div class="inline-drawer-content" style="display:flex;flex-direction:column;gap:8px;padding:8px 0"><div style="display:flex;gap:12px;align-items:center"><span style="font-size:2em;font-weight:bold;color:#8b7355" id="mv_contador">0</span><span style="font-size:0.8em;color:#666">resumos</span><span style="font-size:2em;font-weight:bold;color:#7a8b5a;margin-left:12px" id="mv_contador_semantico">0</span><span style="font-size:0.8em;color:#666">análises</span></div><hr style="border-color:#222;margin:4px 0"><div style="font-size:0.75em;text-transform:uppercase;color:#8b7355;letter-spacing:1px">📝 Camada 1 — Resumos</div><input id="mv_api_key" type="password" class="text_pole" value="${apiKey}" placeholder="API Key NanoGPT"><input id="mv_gh_token" type="password" class="text_pole" value="${ghToken}" placeholder="Token GitHub (gist)"><input id="mv_model" type="text" class="text_pole" value="${menteModel}" placeholder="Modelo (glm-5.1)"><input id="mv_interval" type="number" class="text_pole" value="${menteInterval}" min="10" max="200" placeholder="Mensagens por bloco"><label style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Prompt de Resumo</label><textarea id="mv_prompt" class="text_pole" rows="4" style="resize:vertical;font-size:0.78em">${mentePrompt}</textarea><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#aaa"><input type="checkbox" id="mv_ativa" ${menteAtiva ? 'checked' : ''}> Camada 1 ativa</label><div style="display:flex;gap:6px;flex-wrap:wrap"><input id="mv_save" type="button" class="menu_button" value="💾 Salvar"><input id="mv_now" type="button" class="menu_button" value="↺ Resumir agora"><input id="mv_salvar_tudo" type="button" class="menu_button" value="📦 Salvar tudo"></div><div style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Bloco específico</div><div style="display:flex;gap:6px;align-items:center"><span style="font-size:0.85em;color:#aaa">Bloco #</span><input id="mv_bloco_num" type="number" class="text_pole" value="1" min="1" style="width:70px"><input id="mv_bloco_btn" type="button" class="menu_button" value="📝 Resumir bloco"></div><hr style="border-color:#222;margin:4px 0"><div style="font-size:0.75em;text-transform:uppercase;color:#7a8b5a;letter-spacing:1px">🧠 Camada 2 — Análise Semântica</div><input id="mv_model_semantico" type="text" class="text_pole" value="${semanticoModel}" placeholder="Modelo (glm-5.1)"><input id="mv_semantico_intervalo" type="number" class="text_pole" value="${semanticoIntervalo}" min="1" max="20" placeholder="Gatilho a cada N Gists novos"><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#aaa"><input type="checkbox" id="mv_semantico_ativa" ${semanticoAtivo ? 'checked' : ''}> Camada 2 ativa</label><div style="display:flex;gap:6px"><input id="mv_semantico_btn" type="button" class="menu_button" value="📊 Gerar análise agora"></div><div id="mv_status_semantico" style="font-size:0.82em;color:#aaa">aguardando...</div><hr style="border-color:#222;margin:4px 0"><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#e8a0a0"><input type="checkbox" id="mv_injetar_rp" ${injetarNoRP ? 'checked' : ''}> Injetar no RP (resumos + semântico)</label><div id="mv_status" style="font-size:0.82em;color:#aaa">pronto</div><div style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Últimos Gists</div><div id="mv_lista" style="max-height:200px;overflow-y:auto"><div style="color:#555;font-size:0.78em">configure o token GitHub</div></div></div></div>`);
+    $t.append(`<div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>🧠 Mnemosyne</b> <span style="font-size:0.7em;color:#555">v0.8.0</span><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div><div class="inline-drawer-content" style="display:flex;flex-direction:column;gap:8px;padding:8px 0"><div style="display:flex;gap:12px;align-items:center"><span style="font-size:2em;font-weight:bold;color:#8b7355" id="mv_contador">0</span><span style="font-size:0.8em;color:#666">resumos</span><span style="font-size:2em;font-weight:bold;color:#7a8b5a;margin-left:12px" id="mv_contador_semantico">0</span><span style="font-size:0.8em;color:#666">análises</span></div><hr style="border-color:#222;margin:4px 0"><div style="font-size:0.75em;text-transform:uppercase;color:#8b7355;letter-spacing:1px">📝 Camada 1 — Resumos</div>`}<input id="mv_api_key" type="password" class="text_pole" value="${apiKey}" placeholder="API Key NanoGPT"><input id="mv_gh_token" type="password" class="text_pole" value="${ghToken}" placeholder="Token GitHub (gist)"><input id="mv_model" type="text" class="text_pole" value="${menteModel}" placeholder="Modelo (glm-5.1)"><input id="mv_interval" type="number" class="text_pole" value="${menteInterval}" min="10" max="200" placeholder="Mensagens por bloco"><label style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Prompt de Resumo</label><textarea id="mv_prompt" class="text_pole" rows="4" style="resize:vertical;font-size:0.78em">${mentePrompt}</textarea><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#aaa"><input type="checkbox" id="mv_ativa" ${menteAtiva ? 'checked' : ''}> Camada 1 ativa</label><div style="display:flex;gap:6px;flex-wrap:wrap"><input id="mv_save" type="button" class="menu_button" value="💾 Salvar"><input id="mv_now" type="button" class="menu_button" value="↺ Resumir agora"><input id="mv_salvar_tudo" type="button" class="menu_button" value="📦 Salvar tudo"></div><div style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Bloco específico</div><div style="display:flex;gap:6px;align-items:center"><span style="font-size:0.85em;color:#aaa">Bloco #</span><input id="mv_bloco_num" type="number" class="text_pole" value="1" min="1" style="width:70px"><input id="mv_bloco_btn" type="button" class="menu_button" value="📝 Resumir bloco"></div><hr style="border-color:#222;margin:4px 0"><div style="font-size:0.75em;text-transform:uppercase;color:#7a8b5a;letter-spacing:1px">🧠 Camada 2 — Análise Semântica</div><input id="mv_model_semantico" type="text" class="text_pole" value="${semanticoModel}" placeholder="Modelo (glm-5.1)"><input id="mv_semantico_intervalo" type="number" class="text_pole" value="${semanticoIntervalo}" min="1" max="20" placeholder="Gatilho a cada N Gists novos"><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#aaa"><input type="checkbox" id="mv_semantico_ativa" ${semanticoAtivo ? 'checked' : ''}> Camada 2 ativa</label><div style="display:flex;gap:6px"><input id="mv_semantico_btn" type="button" class="menu_button" value="📊 Gerar análise agora"></div><div id="mv_status_semantico" style="font-size:0.82em;color:#aaa">aguardando...</div><hr style="border-color:#222;margin:4px 0"><div style="font-size:0.75em;text-transform:uppercase;color:#b58a5a;letter-spacing:1px">🧠 Camada 3 — Reconsolidação</div><div style="display:flex;gap:6px"><input id="mv_reconsolidacao_btn" type="button" class="menu_button" value="📊 Gerar reconsolidação"></div><div id="mv_status_reconsolidacao" style="font-size:0.82em;color:#aaa">aguardando...</div><hr style="border-color:#222;margin:4px 0"><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#e8a0a0"><input type="checkbox" id="mv_injetar_rp" ${injetarNoRP ? 'checked' : ''}> Injetar no RP (resumos + semântico)</label><div id="mv_status" style="font-size:0.82em;color:#aaa">pronto</div><div style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Últimos Gists</div><div id="mv_lista" style="max-height:200px;overflow-y:auto"><div style="color:#555;font-size:0.78em">configure o token GitHub</div></div></div></div>`);
 
     $('#mv_prompt').val(mentePrompt);
     $('#mv_save').on('click', () => {
@@ -429,6 +472,7 @@ function injectUI() {
     $('#mv_bloco_btn').on('click', () => { const n = parseInt($('#mv_bloco_num').val()) || 1; if (n < 1) { $('#mv_status').text('✕ número inválido'); return; } mentePrompt = $('#mv_prompt').val().trim() || defaultResumoPrompt(); processarBlocoEspecifico(n); });
     $('#mv_salvar_tudo').on('click', () => { mentePrompt = $('#mv_prompt').val().trim() || defaultResumoPrompt(); salvarTudo(); });
     $('#mv_semantico_btn').on('click', () => gerarAnaliseSemantica(true));
+    $('#mv_reconsolidacao_btn').on('click', () => gerarReconsolidacao(true));
     $('#mv_injetar_rp').on('change', async () => {
         injetarNoRP = $('#mv_injetar_rp').prop('checked');
         const config = JSON.parse(localStorage.getItem(LS) || '{}'); config.injetarNoRP = injetarNoRP; localStorage.setItem(LS, JSON.stringify(config));
@@ -446,4 +490,4 @@ eventSource.on(event_types.MESSAGE_RECEIVED, () => {
 });
 
 setTimeout(injectUI, 3000);
-console.log('[Mnemosyne] Módulo carregado — v0.7.0 (Camada 1 + Camada 2)');
+console.log('[Mnemosyne] Módulo carregado — v0.8.0 (Camada 1 + Camada 2 + Camada 3)');
