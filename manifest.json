@@ -1,7 +1,7 @@
 {
-  "display_name": "Mundo Vivo 2.0",
+  "display_name": "Mnemosyne",
   "name": "mundo-vivo-2",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Módulo Mente — Blocos de resumo. Toggle compila todo o histórico acumulado.",
   "js": "index.js",
   "css": "style.css",
