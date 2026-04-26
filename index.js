@@ -4,8 +4,8 @@
 // Sem IndexedDB — tudo no GitHub
 // ============================================
 
-import { getContext, saveMetadataDebounced } from '../../../extensions.js';
-import { eventSource, event_types, setExtensionPrompt } from '../../../../script.js';
+import { getContext, saveMetadataDebounced } from '../../../../public/scripts/extensions.js';
+import { eventSource, event_types, setExtensionPrompt } from '../../../../public/scripts/script.js';
 
 const LS = 'mnemosyne-settings';
 let saved = {};
