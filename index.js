@@ -197,7 +197,7 @@ async function gerarAnaliseSemantica(manual = false) {
                                                                                 const res = await fetch('https://nano-gpt.com/api/v1/chat/completions', {
                                                                                                 method: 'POST',
                                                                                                             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-                                                                                                                        body: JSON.stringify({ model: semanticoModel, messages: [{ role: 'user', content: prompt }], max_tokens: 2500, temperature: 0.5 })
+                                                                                                                        body: JSON.stringify({ model: semanticoModel, messages: [{ role: 'user', content: prompt }], max_tokens: 4000, temperature: 0.5 })
                                                                                 });
                                                                                         if (!res.ok) { if (manual) $('#mv_status_semantico').text(`✕ HTTP ${res.status}`); return; }
                                                                                                 const data = await res.json();
