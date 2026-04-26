@@ -245,7 +245,7 @@ async function injetarEstado() {
         if (estadoGeral.contencao >= 1) injecao += 'tendência geral a contenção e silêncio. ';
     }
     if (semanticos.length > 0) {
-        injecao += '\n[Análise Semântica: ' + semanticos[0].conteudo.substring(0, 500) + ']';
+        injecao += '\n[Análise Semântica: ' + semanticos[0].conteudo.substring(0, 400) + ']';
     }
 
     if (injecao) setExtensionPrompt('MNEMOSYNE_ESTADO', `[Memória acumulada: ${injecao.trim()}]`, 1, 1);
