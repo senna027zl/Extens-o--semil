@@ -1,8 +1,8 @@
 {
   "display_name": "Mnemosyne",
-  "name": "mundo-vivo-2",
-  "version": "0.3.0",
-  "description": "Sistema cognitivo de memória para Hanna. Resumos por bloco, injeção acumulada via toggle.",
+  "name": "mnemosyne",
+  "version": "0.4.0",
+  "description": "Sistema cognitivo de memória para Hanna. Resumos como Gists privados no GitHub.",
   "js": "index.js",
   "css": "style.css",
   "author": "Senna",
