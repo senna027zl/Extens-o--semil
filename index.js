@@ -1,6 +1,6 @@
 // ============================================
-// MNEMOSYNE v0.6.0
-// Resumos como Gists privados no GitHub
+// MNEMOSYNE v0.7.0
+// Camada 1 (Resumos) + Camada 2 (Análise Semântica)
 // ============================================
 
 import { getContext, saveMetadataDebounced } from '../../../extensions.js';
@@ -13,18 +13,25 @@ try {
     if (raw) saved = JSON.parse(raw);
 } catch(e) { console.warn('[Mnemosyne] Config corrompida'); localStorage.removeItem(LS); }
 
-let apiKey         = saved.apiKey         || '';
-let ghToken        = saved.ghToken        || '';
-let menteModel     = saved.menteModel     || 'deepseek-v3.2';
-let menteInterval  = saved.menteInterval  || 50;
-let menteAtiva     = saved.menteAtiva !== undefined ? saved.menteAtiva : true;
-let mentePrompt    = saved.mentePrompt    || defaultPrompt();
-let injetarNoRP    = saved.injetarNoRP !== undefined ? saved.injetarNoRP : false;
+let apiKey             = saved.apiKey             || '';
+let ghToken            = saved.ghToken            || '';
+let menteModel         = saved.menteModel         || 'glm-5.1';
+let menteInterval      = saved.menteInterval      || 50;
+let menteAtiva         = saved.menteAtiva !== undefined ? saved.menteAtiva : true;
+let mentePrompt        = saved.mentePrompt        || defaultResumoPrompt();
+let injetarNoRP        = saved.injetarNoRP !== undefined ? saved.injetarNoRP : false;
+let semanticoAtivo     = saved.semanticoAtivo !== undefined ? saved.semanticoAtivo : true;
+let semanticoModel     = saved.semanticoModel     || 'glm-5.1';
+let semanticoIntervalo = saved.semanticoIntervalo || 3;
+let ultimoSemantico    = saved.ultimoSemantico    || 0;
+
 let ultimoProcessamento = 0;
 let running = false;
+let runningSemantico = false;
 let resumosCache = [];
+let semanticoCache = null;
 
-function defaultPrompt() {
+function defaultResumoPrompt() {
     return `Você é um analista de narrativa. Leia o bloco de mensagens deste roleplay entre Hanna (coordenadora, 32 anos, controladora, observadora, mãe ensinou que vulnerabilidade é brecha) e Senna (estagiário, 18 anos).
 
 Produza um resumo denso em português com:
@@ -37,17 +44,50 @@ Produza um resumo denso em português com:
 Formato: texto corrido, 3-5 parágrafos. Sem markdown, sem títulos.`;
 }
 
-async function criarGist(resumo, numeroBloco) {
+function construirPromptSemantico(resumos) {
+    const textoGists = resumos.map(r => `[Bloco ${r.bloco}]: ${r.conteudo}`).join('\n\n---\n\n');
+    return `Você é um analista de padrões comportamentais e dinâmica de poder em relacionamentos.
+Leia todos os resumos abaixo — eles cobrem a história completa entre Hanna (coordenadora, 32 anos, controladora, observadora, mãe ensinou que vulnerabilidade é brecha) e Senna (estagiário, 18 anos).
+
+Com base nesses resumos, produza uma ANÁLISE SEMÂNTICA densa em português, extraindo:
+
+1. CRENÇAS SOBRE O SENNA
+O que Hanna aprendeu sobre ele? Como ele age? O que o motiva? Que padrões de comportamento ele exibe?
+
+2. CRENÇAS SOBRE A PRÓPRIA HANNA
+O que ela aprendeu sobre si mesma nessa relação? Como ela reage? O que ela bloqueia? O que ela cede?
+
+3. PADRÕES DE INTERAÇÃO
+Que ciclos se repetem? Que dinâmicas de poder emergem?
+
+4. EXPECTATIVAS E TENSÕES ABERTAS
+O que é provável que aconteça nas próximas interações? Que tensões ainda não foram resolvidas?
+
+5. EVOLUÇÃO SOMÁTICA
+Como o corpo da Hanna reagiu ao longo do tempo? Onde houve contração? Onde houve expansão? Onde houve ausência de sinal esperado?
+
+Formato: texto corrido, com as 5 seções claramente demarcadas. Sem markdown. Analítico, preciso, sem floreios.
+Escreva como um observador treinado que nota o que os personagens não dizem.
+
+RESUMOS COMPLETOS:
+${textoGists}`;
+}
+
+async function criarGist(resumo, numeroBloco, tipo = 'resumo') {
     if (!ghToken) { console.warn('[Mnemosyne] Sem token GitHub'); return null; }
+    const nomeArquivo = tipo === 'semantico' ? 'analise-semantica.md' : `bloco-${String(numeroBloco).padStart(3,'0')}.md`;
+    const descricao = tipo === 'semantico'
+        ? `Mnemosyne — Análise Semântica — ${new Date().toLocaleDateString('pt-BR')}`
+        : `Mnemosyne — Bloco ${numeroBloco} — ${new Date().toLocaleDateString('pt-BR')}`;
     try {
         const res = await fetch('https://api.github.com/gists', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${ghToken}`, 'Content-Type': 'application/json', 'Accept': 'application/vnd.github+json' },
-            body: JSON.stringify({ description: `Mnemosyne — Bloco ${numeroBloco} — ${new Date().toLocaleDateString('pt-BR')}`, public: false, files: { [`bloco-${String(numeroBloco).padStart(3,'0')}.md`]: { content: resumo } } })
+            body: JSON.stringify({ description: descricao, public: false, files: { [nomeArquivo]: { content: resumo } } })
         });
         if (!res.ok) throw new Error(`GitHub API ${res.status}`);
         const data = await res.json();
-        console.log(`[Mnemosyne] Gist criado: ${data.html_url}`);
+        console.log(`[Mnemosyne] Gist ${tipo} criado: ${data.html_url}`);
         return data;
     } catch(e) { console.error('[Mnemosyne] Erro ao criar Gist:', e); return null; }
 }
@@ -55,7 +95,9 @@ async function criarGist(resumo, numeroBloco) {
 async function listarGists() {
     if (!ghToken) return [];
     try {
-        const res = await fetch('https://api.github.com/gists?per_page=50', { headers: { 'Authorization': `Bearer ${ghToken}`, 'Accept': 'application/vnd.github+json' } });
+        const res = await fetch('https://api.github.com/gists?per_page=50', {
+            headers: { 'Authorization': `Bearer ${ghToken}`, 'Accept': 'application/vnd.github+json' }
+        });
         if (!res.ok) throw new Error(`GitHub API ${res.status}`);
         const gists = await res.json();
         return gists.filter(g => g.description && g.description.startsWith('Mnemosyne'));
@@ -70,7 +112,15 @@ async function lerConteudoGists(gists) {
             try {
                 const res = await fetch(arquivo.raw_url);
                 const texto = await res.text();
-                resultados.push({ id: gist.id, bloco: extrairBloco(gist.description), conteudo: texto, data: gist.created_at, url: gist.html_url });
+                const isSemantico = gist.description && gist.description.includes('Análise Semântica');
+                resultados.push({
+                    id: gist.id,
+                    bloco: isSemantico ? null : extrairBloco(gist.description),
+                    tipo: isSemantico ? 'semantico' : 'resumo',
+                    conteudo: texto,
+                    data: gist.created_at,
+                    url: gist.html_url
+                });
             } catch(e) {}
         }
     }
@@ -79,6 +129,7 @@ async function lerConteudoGists(gists) {
 }
 
 function extrairBloco(d) { const m = d?.match(/Bloco (\d+)/); return m ? parseInt(m[1]) : null; }
+
 function extrairTags(t) {
     const tags = [];
     if (/vulner[áa]vel|expost[ao]|confess/i.test(t)) tags.push('vulnerabilidade');
@@ -116,6 +167,56 @@ async function extrairResumo(ctx) {
     } catch(e) { $('#mv_status').text(`✕ ${e.message.substring(0,40)}`); return null; }
 }
 
+async function gerarAnaliseSemantica(manual = false) {
+    if (!semanticoAtivo || !apiKey || !ghToken || runningSemantico) return;
+    runningSemantico = true;
+    if (manual) $('#mv_status_semantico').text('⟳ gerando análise...');
+    try {
+        const gists = await listarGists();
+        const todos = await lerConteudoGists(gists);
+        const resumos = todos.filter(r => r.tipo === 'resumo');
+        if (resumos.length === 0) { if (manual) $('#mv_status_semantico').text('— sem resumos para analisar'); return; }
+        const prompt = construirPromptSemantico(resumos);
+        const res = await fetch('https://nano-gpt.com/api/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+            body: JSON.stringify({ model: semanticoModel, messages: [{ role: 'user', content: prompt }], max_tokens: 1500, temperature: 0.5 })
+        });
+        if (!res.ok) { if (manual) $('#mv_status_semantico').text(`✕ HTTP ${res.status}`); return; }
+        const data = await res.json();
+        const texto = (data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '').trim();
+        if (!texto) { if (manual) $('#mv_status_semantico').text('✕ API retornou vazio'); return; }
+        const anterior = todos.find(r => r.tipo === 'semantico');
+        if (anterior) {
+            await fetch(`https://api.github.com/gists/${anterior.id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${ghToken}`, 'Accept': 'application/vnd.github+json' }
+            });
+        }
+        await criarGist(texto, null, 'semantico');
+        semanticoCache = texto;
+        ultimoSemantico = resumos.length;
+        const config = JSON.parse(localStorage.getItem(LS) || '{}');
+        config.ultimoSemantico = ultimoSemantico;
+        localStorage.setItem(LS, JSON.stringify(config));
+        if (manual) $('#mv_status_semantico').text('✓ análise semântica gerada');
+        await injetarEstado();
+        carregarListaNaUI();
+    } catch(e) { if (manual) $('#mv_status_semantico').text(`✕ ${e.message.substring(0,40)}`); }
+    finally { runningSemantico = false; }
+}
+
+async function verificarGatilhoSemantico() {
+    if (!semanticoAtivo || !apiKey || !ghToken || runningSemantico) return;
+    const gists = await listarGists();
+    const todos = await lerConteudoGists(gists);
+    const resumos = todos.filter(r => r.tipo === 'resumo');
+    const totalResumos = resumos.length;
+    if (totalResumos > 0 && totalResumos % semanticoIntervalo === 0 && totalResumos > ultimoSemantico) {
+        gerarAnaliseSemantica(false);
+    }
+}
+
 function extrairEstado(texto) {
     const e = { vulnerabilidade: 0, testeLimite: false, contencao: 0 };
     if (/vulner[áa]vel|expost[ao]|abriu|confess|admitiu/i.test(texto)) e.vulnerabilidade = 7;
@@ -128,19 +229,33 @@ function extrairEstado(texto) {
 async function injetarEstado() {
     if (!injetarNoRP) { setExtensionPrompt('MNEMOSYNE_ESTADO', '', 1, 1); return; }
     const gists = await listarGists();
-    const resumos = await lerConteudoGists(gists);
+    const todos = await lerConteudoGists(gists);
+    const resumos = todos.filter(r => r.tipo === 'resumo');
+    const semanticos = todos.filter(r => r.tipo === 'semantico');
     resumosCache = resumos;
-    if (resumos.length === 0) { setExtensionPrompt('MNEMOSYNE_ESTADO', '', 1, 1); return; }
-    const textoCompleto = resumos.slice(-10).map(r => `[Bloco ${r.bloco}]: ${r.conteudo}`).join('\n\n');
-    const estadoGeral = extrairEstado(textoCompleto);
-    let instrucao = '';
-    if (estadoGeral.vulnerabilidade >= 7) instrucao += 'histórico de vulnerabilidade — instinto de proteção ativo. ';
-    if (estadoGeral.testeLimite) instrucao += 'padrão de teste de limites recorrente no histórico. ';
-    if (estadoGeral.contencao >= 1) instrucao += 'tendência geral a contenção e silêncio. ';
-    if (instrucao) setExtensionPrompt('MNEMOSYNE_ESTADO', `[Memória acumulada: ${instrucao.trim()}]`, 1, 1);
+    if (semanticos.length > 0) semanticoCache = semanticos[0].conteudo;
+    if (resumos.length === 0 && semanticos.length === 0) { setExtensionPrompt('MNEMOSYNE_ESTADO', '', 1, 1); return; }
+
+    let injecao = '';
+    if (resumos.length > 0) {
+        const textoResumos = resumos.slice(-10).map(r => `[Bloco ${r.bloco}]: ${r.conteudo}`).join('\n\n');
+        const estadoGeral = extrairEstado(textoResumos);
+        if (estadoGeral.vulnerabilidade >= 7) injecao += 'histórico de vulnerabilidade — instinto de proteção ativo. ';
+        if (estadoGeral.testeLimite) injecao += 'padrão de teste de limites recorrente no histórico. ';
+        if (estadoGeral.contencao >= 1) injecao += 'tendência geral a contenção e silêncio. ';
+    }
+    if (semanticos.length > 0) {
+        injecao += '\n[Análise Semântica: ' + semanticos[0].conteudo.substring(0, 500) + ']';
+    }
+
+    if (injecao) setExtensionPrompt('MNEMOSYNE_ESTADO', `[Memória acumulada: ${injecao.trim()}]`, 1, 1);
     else setExtensionPrompt('MNEMOSYNE_ESTADO', '', 1, 1);
+
     const ctx = getContext();
-    if (ctx.chatMetadata) { ctx.chatMetadata['mnemosyne_estado'] = { resumos: resumos.length, ...estadoGeral }; saveMetadataDebounced(); }
+    if (ctx.chatMetadata) {
+        ctx.chatMetadata['mnemosyne_estado'] = { resumos: resumos.length, semanticos: semanticos.length };
+        saveMetadataDebounced();
+    }
 }
 
 async function processarBloco() {
@@ -153,9 +268,13 @@ async function processarBloco() {
         $('#mv_status').text(`⟳ resumindo bloco ${blocoAtual}...`);
         const resumo = await extrairResumo(ctx);
         if (!resumo) { if ($('#mv_status').text().includes('resumindo')) $('#mv_status').text('— nada relevante'); return; }
-        const gist = await criarGist(resumo, blocoAtual);
-        if (gist) { $('#mv_status').text(`✓ bloco ${blocoAtual} salvo no GitHub`); await injetarEstado(); carregarListaNaUI(); }
-        else $('#mv_status').text('✕ falha ao salvar no GitHub');
+        const gist = await criarGist(resumo, blocoAtual, 'resumo');
+        if (gist) {
+            $('#mv_status').text(`✓ bloco ${blocoAtual} salvo no GitHub`);
+            await injetarEstado();
+            carregarListaNaUI();
+            setTimeout(() => verificarGatilhoSemantico(), 2000);
+        } else $('#mv_status').text('✕ falha ao salvar no GitHub');
     } catch(e) { $('#mv_status').text(`✕ ${e.message.substring(0,50)}`); }
     finally { running = false; }
 }
@@ -181,28 +300,15 @@ async function processarBlocoEspecifico(numeroBloco) {
         const data = await res.json();
         const texto = (data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '').trim();
         if (!texto) { $('#mv_status').text('✕ API retornou vazio'); return; }
-        const gist = await criarGist(texto, numeroBloco);
-        if (gist) { $('#mv_status').text(`✓ bloco ${numeroBloco} salvo no GitHub`); await injetarEstado(); carregarListaNaUI(); }
-        else $('#mv_status').text('✕ falha ao salvar no GitHub');
+        const gist = await criarGist(texto, numeroBloco, 'resumo');
+        if (gist) {
+            $('#mv_status').text(`✓ bloco ${numeroBloco} salvo no GitHub`);
+            await injetarEstado();
+            carregarListaNaUI();
+            setTimeout(() => verificarGatilhoSemantico(), 2000);
+        } else $('#mv_status').text('✕ falha ao salvar no GitHub');
     } catch(e) { $('#mv_status').text(`✕ ${e.message.substring(0,50)}`); }
     finally { running = false; }
-}
-
-async function carregarListaNaUI() {
-    if (!ghToken) { $('#mv_lista').html('<div style="color:#555;font-size:0.78em">configure o token GitHub</div>'); $('#mv_contador').text('0'); return; }
-    try {
-        const gists = await listarGists();
-        const resumos = await lerConteudoGists(gists);
-        resumosCache = resumos;
-        const lista = resumos.slice(-5).reverse().map(r => {
-            const data = new Date(r.data);
-            const hora = `${String(data.getHours()).padStart(2,'0')}:${String(data.getMinutes()).padStart(2,'0')}`;
-            const tags = extrairTags(r.conteudo);
-            return `<div style="font-size:0.78em;color:#888;margin:2px 0;padding:3px 0;border-bottom:1px solid #222">📝 <b>Bloco ${r.bloco}</b> · ${hora}<br>${r.conteudo?.substring(0, 100)}${(r.conteudo?.length > 100) ? '...' : ''}${tags.length ? '<br><span style="color:#666;font-size:0.85em">🏷 ' + tags.join(', ') + '</span>' : ''}</div>`;
-        }).join('');
-        $('#mv_lista').html(lista || '<div style="color:#555;font-size:0.78em">nenhum Gist encontrado</div>');
-        $('#mv_contador').text(resumos.length);
-    } catch(e) { $('#mv_lista').html('<div style="color:#a55;font-size:0.78em">erro ao carregar</div>'); }
 }
 
 async function salvarTudo() {
@@ -231,33 +337,66 @@ async function salvarTudo() {
                 const data = await res.json();
                 const texto = (data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '').trim();
                 if (!texto) continue;
-                await criarGist(texto, bloco);
+                await criarGist(texto, bloco, 'resumo');
                 criados++;
             } catch(e) { console.warn(`[Mnemosyne] Falha no bloco ${bloco}:`, e); }
         }
         $('#mv_status').text(`✓ ${criados}/${totalBlocos} blocos salvos no GitHub`);
         await injetarEstado();
         carregarListaNaUI();
+        setTimeout(() => verificarGatilhoSemantico(), 3000);
     } catch(e) { $('#mv_status').text(`✕ ${e.message.substring(0,50)}`); }
     finally { running = false; }
+}
+
+async function carregarListaNaUI() {
+    if (!ghToken) { $('#mv_lista').html('<div style="color:#555;font-size:0.78em">configure o token GitHub</div>'); $('#mv_contador').text('0'); $('#mv_contador_semantico').text('0'); return; }
+    try {
+        const gists = await listarGists();
+        const todos = await lerConteudoGists(gists);
+        const resumos = todos.filter(r => r.tipo === 'resumo');
+        const semanticos = todos.filter(r => r.tipo === 'semantico');
+        resumosCache = resumos;
+        if (semanticos.length > 0) semanticoCache = semanticos[0].conteudo;
+        const lista = resumos.slice(-5).reverse().map(r => {
+            const data = new Date(r.data);
+            const hora = `${String(data.getHours()).padStart(2,'0')}:${String(data.getMinutes()).padStart(2,'0')}`;
+            const tags = extrairTags(r.conteudo);
+            return `<div style="font-size:0.78em;color:#888;margin:2px 0;padding:3px 0;border-bottom:1px solid #222">📝 <b>Bloco ${r.bloco}</b> · ${hora}<br>${r.conteudo?.substring(0, 100)}${(r.conteudo?.length > 100) ? '...' : ''}${tags.length ? '<br><span style="color:#666;font-size:0.85em">🏷 ' + tags.join(', ') + '</span>' : ''}</div>`;
+        }).join('');
+        $('#mv_lista').html(lista || '<div style="color:#555;font-size:0.78em">nenhum Gist encontrado</div>');
+        $('#mv_contador').text(resumos.length);
+        $('#mv_contador_semantico').text(semanticos.length);
+        if (semanticos.length > 0) {
+            const data = new Date(semanticos[0].data);
+            const hora = `${String(data.getHours()).padStart(2,'0')}:${String(data.getMinutes()).padStart(2,'0')}`;
+            $('#mv_status_semantico').text(`última análise: ${hora}`);
+        }
+    } catch(e) { $('#mv_lista').html('<div style="color:#a55;font-size:0.78em">erro ao carregar</div>'); }
 }
 
 function injectUI() {
     const $t = $('#extensions_settings2').length ? $('#extensions_settings2') : $('#extensions_settings');
     if (!$t.length) { setTimeout(injectUI, 1000); return; }
-    $t.append(`<div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>🧠 Mnemosyne</b> <span style="font-size:0.7em;color:#555">v0.6.0</span><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div><div class="inline-drawer-content" style="display:flex;flex-direction:column;gap:8px;padding:8px 0"><div style="display:flex;gap:12px;align-items:center"><span style="font-size:2em;font-weight:bold;color:#8b7355" id="mv_contador">0</span><span style="font-size:0.8em;color:#666">Gists</span></div><input id="mv_api_key" type="password" class="text_pole" value="${apiKey}" placeholder="API Key NanoGPT"><input id="mv_gh_token" type="password" class="text_pole" value="${ghToken}" placeholder="Token GitHub (gist)"><input id="mv_model" type="text" class="text_pole" value="${menteModel}" placeholder="Modelo"><input id="mv_interval" type="number" class="text_pole" value="${menteInterval}" min="10" max="200" placeholder="Mensagens por bloco"><label style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Prompt de Resumo (editável)</label><textarea id="mv_prompt" class="text_pole" rows="6" style="resize:vertical;font-size:0.78em">${mentePrompt}</textarea><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#aaa"><input type="checkbox" id="mv_ativa" ${menteAtiva ? 'checked' : ''}> Módulo ativo</label><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#e8a0a0"><input type="checkbox" id="mv_injetar_rp" ${injetarNoRP ? 'checked' : ''}> Injetar estado no RP (lê Gists)</label><div style="display:flex;gap:6px;flex-wrap:wrap"><input id="mv_save" type="button" class="menu_button" value="💾 Salvar"><input id="mv_now" type="button" class="menu_button" value="↺ Resumir agora"><input id="mv_salvar_tudo" type="button" class="menu_button" value="📦 Salvar tudo"></div><div style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Bloco específico</div><div style="display:flex;gap:6px;align-items:center"><span style="font-size:0.85em;color:#aaa">Bloco #</span><input id="mv_bloco_num" type="number" class="text_pole" value="1" min="1" style="width:70px"><input id="mv_bloco_btn" type="button" class="menu_button" value="📝 Resumir bloco"></div><div id="mv_status" style="font-size:0.82em;color:#aaa">pronto</div><div style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Últimos Gists</div><div id="mv_lista" style="max-height:200px;overflow-y:auto"><div style="color:#555;font-size:0.78em">configure o token GitHub</div></div></div></div>`);
+
+    $t.append(`<div class="inline-drawer"><div class="inline-drawer-toggle inline-drawer-header"><b>🧠 Mnemosyne</b> <span style="font-size:0.7em;color:#555">v0.7.0</span><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div><div class="inline-drawer-content" style="display:flex;flex-direction:column;gap:8px;padding:8px 0"><div style="display:flex;gap:12px;align-items:center"><span style="font-size:2em;font-weight:bold;color:#8b7355" id="mv_contador">0</span><span style="font-size:0.8em;color:#666">resumos</span><span style="font-size:2em;font-weight:bold;color:#7a8b5a;margin-left:12px" id="mv_contador_semantico">0</span><span style="font-size:0.8em;color:#666">análises</span></div><hr style="border-color:#222;margin:4px 0"><div style="font-size:0.75em;text-transform:uppercase;color:#8b7355;letter-spacing:1px">📝 Camada 1 — Resumos</div><input id="mv_api_key" type="password" class="text_pole" value="${apiKey}" placeholder="API Key NanoGPT"><input id="mv_gh_token" type="password" class="text_pole" value="${ghToken}" placeholder="Token GitHub (gist)"><input id="mv_model" type="text" class="text_pole" value="${menteModel}" placeholder="Modelo (glm-5.1)"><input id="mv_interval" type="number" class="text_pole" value="${menteInterval}" min="10" max="200" placeholder="Mensagens por bloco"><label style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Prompt de Resumo</label><textarea id="mv_prompt" class="text_pole" rows="4" style="resize:vertical;font-size:0.78em">${mentePrompt}</textarea><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#aaa"><input type="checkbox" id="mv_ativa" ${menteAtiva ? 'checked' : ''}> Camada 1 ativa</label><div style="display:flex;gap:6px;flex-wrap:wrap"><input id="mv_save" type="button" class="menu_button" value="💾 Salvar"><input id="mv_now" type="button" class="menu_button" value="↺ Resumir agora"><input id="mv_salvar_tudo" type="button" class="menu_button" value="📦 Salvar tudo"></div><div style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Bloco específico</div><div style="display:flex;gap:6px;align-items:center"><span style="font-size:0.85em;color:#aaa">Bloco #</span><input id="mv_bloco_num" type="number" class="text_pole" value="1" min="1" style="width:70px"><input id="mv_bloco_btn" type="button" class="menu_button" value="📝 Resumir bloco"></div><hr style="border-color:#222;margin:4px 0"><div style="font-size:0.75em;text-transform:uppercase;color:#7a8b5a;letter-spacing:1px">🧠 Camada 2 — Análise Semântica</div><input id="mv_model_semantico" type="text" class="text_pole" value="${semanticoModel}" placeholder="Modelo (glm-5.1)"><input id="mv_semantico_intervalo" type="number" class="text_pole" value="${semanticoIntervalo}" min="1" max="20" placeholder="Gatilho a cada N Gists novos"><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#aaa"><input type="checkbox" id="mv_semantico_ativa" ${semanticoAtivo ? 'checked' : ''}> Camada 2 ativa</label><div style="display:flex;gap:6px"><input id="mv_semantico_btn" type="button" class="menu_button" value="📊 Gerar análise agora"></div><div id="mv_status_semantico" style="font-size:0.82em;color:#aaa">aguardando...</div><hr style="border-color:#222;margin:4px 0"><label style="display:flex;align-items:center;gap:8px;font-size:0.85em;color:#e8a0a0"><input type="checkbox" id="mv_injetar_rp" ${injetarNoRP ? 'checked' : ''}> Injetar no RP (resumos + semântico)</label><div id="mv_status" style="font-size:0.82em;color:#aaa">pronto</div><div style="font-size:0.75em;text-transform:uppercase;color:#666;letter-spacing:1px;margin-top:4px">Últimos Gists</div><div id="mv_lista" style="max-height:200px;overflow-y:auto"><div style="color:#555;font-size:0.78em">configure o token GitHub</div></div></div></div>`);
+
     $('#mv_prompt').val(mentePrompt);
     $('#mv_save').on('click', () => {
         apiKey = $('#mv_api_key').val().trim(); ghToken = $('#mv_gh_token').val().trim();
-        menteModel = $('#mv_model').val().trim() || 'deepseek-v3.2'; menteInterval = parseInt($('#mv_interval').val()) || 50;
-        menteAtiva = $('#mv_ativa').prop('checked'); mentePrompt = $('#mv_prompt').val().trim() || defaultPrompt();
+        menteModel = $('#mv_model').val().trim() || 'glm-5.1'; menteInterval = parseInt($('#mv_interval').val()) || 50;
+        menteAtiva = $('#mv_ativa').prop('checked'); mentePrompt = $('#mv_prompt').val().trim() || defaultResumoPrompt();
         injetarNoRP = $('#mv_injetar_rp').prop('checked');
-        localStorage.setItem(LS, JSON.stringify({ apiKey, ghToken, menteModel, menteInterval, menteAtiva, mentePrompt, injetarNoRP }));
-        $('#mv_status').text('✓ salvo (tudo)'); carregarListaNaUI();
+        semanticoModel = $('#mv_model_semantico').val().trim() || 'glm-5.1';
+        semanticoIntervalo = parseInt($('#mv_semantico_intervalo').val()) || 3;
+        semanticoAtivo = $('#mv_semantico_ativa').prop('checked');
+        localStorage.setItem(LS, JSON.stringify({ apiKey, ghToken, menteModel, menteInterval, menteAtiva, mentePrompt, injetarNoRP, semanticoModel, semanticoIntervalo, semanticoAtivo, ultimoSemantico }));
+        $('#mv_status').text('✓ salvo'); carregarListaNaUI();
     });
-    $('#mv_now').on('click', () => { mentePrompt = $('#mv_prompt').val().trim() || defaultPrompt(); ultimoProcessamento = Math.max(0, (getContext().chat?.length||0) - menteInterval); processarBloco(); });
-    $('#mv_bloco_btn').on('click', () => { const n = parseInt($('#mv_bloco_num').val()) || 1; if (n < 1) { $('#mv_status').text('✕ número inválido'); return; } mentePrompt = $('#mv_prompt').val().trim() || defaultPrompt(); processarBlocoEspecifico(n); });
-    $('#mv_salvar_tudo').on('click', () => { mentePrompt = $('#mv_prompt').val().trim() || defaultPrompt(); salvarTudo(); });
+    $('#mv_now').on('click', () => { mentePrompt = $('#mv_prompt').val().trim() || defaultResumoPrompt(); ultimoProcessamento = Math.max(0, (getContext().chat?.length||0) - menteInterval); processarBloco(); });
+    $('#mv_bloco_btn').on('click', () => { const n = parseInt($('#mv_bloco_num').val()) || 1; if (n < 1) { $('#mv_status').text('✕ número inválido'); return; } mentePrompt = $('#mv_prompt').val().trim() || defaultResumoPrompt(); processarBlocoEspecifico(n); });
+    $('#mv_salvar_tudo').on('click', () => { mentePrompt = $('#mv_prompt').val().trim() || defaultResumoPrompt(); salvarTudo(); });
+    $('#mv_semantico_btn').on('click', () => gerarAnaliseSemantica(true));
     $('#mv_injetar_rp').on('change', async () => {
         injetarNoRP = $('#mv_injetar_rp').prop('checked');
         const config = JSON.parse(localStorage.getItem(LS) || '{}'); config.injetarNoRP = injetarNoRP; localStorage.setItem(LS, JSON.stringify(config));
@@ -269,6 +408,10 @@ function injectUI() {
 function syncUltimoProcessamento() { ultimoProcessamento = getContext().chat?.length || 0; }
 eventSource.on(event_types.APP_READY, () => { syncUltimoProcessamento(); carregarListaNaUI(); });
 eventSource.on(event_types.CHAT_CHANGED, () => { syncUltimoProcessamento(); carregarListaNaUI(); });
-eventSource.on(event_types.MESSAGE_RECEIVED, () => { const total = getContext().chat?.length || 0; if (total - ultimoProcessamento >= menteInterval) { ultimoProcessamento = total; processarBloco(); } });
+eventSource.on(event_types.MESSAGE_RECEIVED, () => {
+    const total = getContext().chat?.length || 0;
+    if (total - ultimoProcessamento >= menteInterval) { ultimoProcessamento = total; processarBloco(); }
+});
+
 setTimeout(injectUI, 3000);
-console.log('[Mnemosyne] Módulo carregado — v0.6.0 (GitHub Gists)');
+console.log('[Mnemosyne] Módulo carregado — v0.7.0 (Camada 1 + Camada 2)');
