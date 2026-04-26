@@ -205,9 +205,11 @@ async function gerarAnaliseSemantica(manual = false) {
                                                                                                                 if (!texto) { if (manual) $('#mv_status_semantico').text('✕ API retornou vazio'); return; }
 
                                                                                                                         if (semanticoAnterior) {
+                                                                                                                                        const descricaoArquivada = `Mnemosyne — Semântico Arquivado — ${new Date().toLocaleDateString('pt-BR')}`;
                                                                                                                                         await fetch(`https://api.github.com/gists/${semanticoAnterior.id}`, {
-                                                                                                                                                            method: 'DELETE',
-                                                                                                                                                                            headers: { 'Authorization': `Bearer ${ghToken}`, 'Accept': 'application/vnd.github+json' }
+                                                                                                                                                            method: 'PATCH',
+                                                                                                                                                                            headers: { 'Authorization': `Bearer ${ghToken}`, 'Content-Type': 'application/json', 'Accept': 'application/vnd.github+json' },
+                                                                                                                                                                            body: JSON.stringify({ description: descricaoArquivada })
                                                                                                                                         });
                                                                                                                         }
 
