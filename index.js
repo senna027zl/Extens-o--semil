@@ -337,47 +337,67 @@ function extrairEstado(texto) {
 }
 
 async function injetarEstado() {
-    if (!injetarNoRP) { setExtensionPrompt('MNEMOSYNE_ESTADO', '', 1, 1); return; }
-    const gists = await listarGists();
-    const todos = await lerConteudoGists(gists);
-    const resumos = todos.filter(r => r.tipo === 'resumo');
-    const semanticos = todos.filter(r => r.tipo === 'semantico');
-    resumosCache = resumos;
-    if (semanticos.length > 0) semanticoCache = semanticos[0].conteudo;
-    if (resumos.length === 0 && semanticos.length === 0) { setExtensionPrompt('MNEMOSYNE_ESTADO', '', 1, 1); return; }
+        if (!injetarNoRP) { setExtensionPrompt('MNEMOSYNE_ESTADO', '', 1, 1); return; }
+            const gists = await listarGists();
+                const todos = await lerConteudoGists(gists);
+                    const resumos = todos.filter(r => r.tipo === 'resumo');
+                        const semanticos = todos.filter(r => r.tipo === 'semantico');
+                            const reconsolidacoes = todos.filter(r => r.tipo === 'reconsolidacao');
+                                resumosCache = resumos;
+                                    if (semanticos.length > 0) semanticoCache = semanticos[0].conteudo;
+                                        if (resumos.length === 0 && semanticos.length === 0 && reconsolidacoes.length === 0) {
+                                                    setExtensionPrompt('MNEMOSYNE_ESTADO', '', 1, 1);
+                                                            return;
+                                        }
 
-    // Injeta resumos normalmente
-    if (resumos.length > 0) {
-        const textoResumos = resumos.slice(-10).map(r => `[Bloco ${r.bloco}]: ${r.conteudo}`).join('\n\n');
-        const estadoGeral = extrairEstado(textoResumos);
-        let injecao = '';
-        if (estadoGeral.vulnerabilidade >= 7) injecao += 'histórico de vulnerabilidade — instinto de proteção ativo. ';
-        if (estadoGeral.testeLimite) injecao += 'padrão de teste de limites recorrente no histórico. ';
-        if (estadoGeral.contencao >= 1) injecao += 'tendência geral a contenção e silêncio. ';
-        if (injecao) setExtensionPrompt('MNEMOSYNE_ESTADO', `[Memória acumulada: ${injecao.trim()}]`, 1, 1);
-        else setExtensionPrompt('MNEMOSYNE_ESTADO', '', 1, 1);
-    }
+                                            // Camada 1 — resumos
+                                                if (resumos.length > 0) {
+                                                            const textoResumos = resumos.slice(-10).map(r => `[Bloco ${r.bloco}]: ${r.conteudo}`).join('\n\n');
+                                                                    const estadoGeral = extrairEstado(textoResumos);
+                                                                            let injecao = '';
+                                                                                    if (estadoGeral.vulnerabilidade >= 7) injecao += 'histórico de vulnerabilidade — instinto de proteção ativo. ';
+                                                                                            if (estadoGeral.testeLimite) injecao += 'padrão de teste de limites recorrente no histórico. ';
+                                                                                                    if (estadoGeral.contencao >= 1) injecao += 'tendência geral a contenção e silêncio. ';
+                                                                                                            if (injecao) setExtensionPrompt('MNEMOSYNE_ESTADO', `[Memória acumulada: ${injecao.trim()}]`, 1, 1);
+                                                                                                                    else setExtensionPrompt('MNEMOSYNE_ESTADO', '', 1, 1);
+                                                }
 
-    // Injeta análise semântica como extrato de 3 frases essenciais, com fallback
-    if (semanticos.length > 0) {
-        const texto = semanticos[0].conteudo;
-        const frases = texto.split(/[.!?]\s+/).filter(f => f.trim().length > 0);
-        const essenciais = frases.filter(f =>
-            f.includes('acredito') || f.includes('aprendi') || f.includes('percebi') ||
-            f.includes('corpo') || f.includes('padrão') || f.includes('espero') ||
-            f.includes('assusta') || f.includes('admito') || f.includes('medo')
-        );
-        const extrato = (essenciais.length > 0 ? essenciais : frases).slice(0, 3).join('. ') + '.';
-        if (extrato.length > 2) {
-            setExtensionPrompt('MNEMOSYNE_INSIGHT', `[Insight: ${extrato}]`, 0, 2);
-        }
-    }
+                                                    // Camada 2 — insight semântico
+                                                        if (semanticos.length > 0) {
+                                                                    const texto = semanticos[0].conteudo;
+                                                                            const frases = texto.split(/[.!?]\s+/).filter(f => f.trim().length > 0);
+                                                                                    const essenciais = frases.filter(f =>
+                                                                                                f.includes('acredito') || f.includes('aprendi') || f.includes('percebi') ||
+                                                                                                            f.includes('corpo') || f.includes('padrão') || f.includes('espero') ||
+                                                                                                                        f.includes('assusta') || f.includes('admito') || f.includes('medo')
+                                                                                                                                );
+                                                                                                                                        const extrato = (essenciais.length > 0 ? essenciais : frases).slice(0, 3).join('. ') + '.';
+                                                                                                                                                if (extrato.length > 2) setExtensionPrompt('MNEMOSYNE_INSIGHT', `[Insight: ${extrato}]`, 0, 2);
+                                                        }
 
-    const ctx = getContext();
-    if (ctx.chatMetadata) {
-        ctx.chatMetadata['mnemosyne_estado'] = { resumos: resumos.length, semanticos: semanticos.length };
-        saveMetadataDebounced();
-    }
+                                                            // Camada 3 — reconsolidação
+                                                                if (reconsolidacoes.length > 0) {
+                                                                            const texto = reconsolidacoes[0].conteudo;
+                                                                                    const frases = texto.split(/[.!?]\s+/).filter(f => f.trim().length > 0);
+                                                                                            const essenciais = frases.filter(f =>
+                                                                                                        f.includes('mudou') || f.includes('mudei') || f.includes('reclassif') ||
+                                                                                                                    f.includes('fantasma') || f.includes('mãe') || f.includes('antes') ||
+                                                                                                                                f.includes('encolheu') || f.includes('perdeu') || f.includes('já não') ||
+                                                                                                                                            f.includes('ressignif') || f.includes('hoje') || f.includes('passado')
+                                                                                                                                                    );
+                                                                                                                                                            const extrato = (essenciais.length > 0 ? essenciais : frases).slice(0, 4).join('. ') + '.';
+                                                                                                                                                                    if (extrato.length > 2) setExtensionPrompt('MNEMOSYNE_RECONSOLIDACAO', `[Reconsolidação: ${extrato}]`, 0, 3);
+                                                                }
+
+                                                                    const ctx = getContext();
+                                                                        if (ctx.chatMetadata) {
+                                                                                    ctx.chatMetadata['mnemosyne_estado'] = {
+                                                                                                    resumos: resumos.length,
+                                                                                                                semanticos: semanticos.length,
+                                                                                                                            reconsolidacoes: reconsolidacoes.length
+                                                                                    };
+                                                                                            saveMetadataDebounced();
+                                                                        }
 }
 
 async function processarBloco() {
