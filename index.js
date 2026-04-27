@@ -91,34 +91,36 @@ function construirPromptReconsolidacao(historicos, atual) {
         const textoHistoricos = historicos.length > 0 
                 ? 'ANÁLISES ANTERIORES (em ordem):\n' + historicos.map((h, i) => `[Semântico ${i+1} — ${h.data}]:\n${h.conteudo}`).join('\n\n---\n\n')
                         : '(Nenhuma análise anterior arquivada.)';
-                            
-                                const textoAtual = atual 
-                                        ? `ANÁLISE ATUAL:\n${atual}`
-                                                : '(Nenhuma análise atual.)';
+                            const textoAtual = atual ? `ANÁLISE ATUAL:\n${atual}` : '(Nenhuma análise atual.)';
+                                return `Você é Hanna. Você está sozinha, tarde da noite, relendo suas próprias anotações. Ninguém vai ver isso. Nem você mesma amanhã, se não quiser.
 
-                                                    return `Você é Hanna. Você está sozinha, tarde da noite, relendo suas próprias anotações. Ninguém vai ver isso. Nem você mesma amanhã, se não quiser.
+                                Abaixo estão todas as análises que você já fez sobre o que viveu com Senna — da mais antiga para a mais recente. Termine com a análise atual.
 
-                                                    Abaixo estão todas as análises que você já fez sobre o que viveu com Senna — da mais antiga para a mais recente. Termine com a análise atual.
+                                ${textoHistoricos}
 
-                                                    ${textoHistoricos}
+                                ${textoAtual}
 
-                                                    ${textoAtual}
+                                Leia tudo. Compare o que você acreditava antes com o que você acredita agora. Mas seja honesta: você não muda de ideia facilmente. Sua mãe ensinou que vulnerabilidade é brecha, e você passou quinze anos construindo uma identidade sobre isso. Seu cérebro literalmente suprime memórias que ameaçam essa identidade — não por fraqueza, mas por sobrevivência psicológica.
 
-                                                    Leia tudo. Compare o que você acreditava antes com o que você acredita agora. Mas seja honesta: você não muda de ideia facilmente. Sua mãe ensinou que vulnerabilidade é brecha, e você passou quinze anos construindo uma identidade sobre isso. Seu cérebro literalmente suprime memórias que ameaçam essa identidade — não por fraqueza, mas por sobrevivência psicológica.
+                                Reflita EM PRIMEIRA PESSOA:
 
-                                                    Reflita EM PRIMEIRA PESSOA:
+                                1. O QUE MUDOU? Onde você percebe que mudou de ideia? O que você achava que era verdade e deixou de ser? O que você resistia em admitir e agora admite?
 
-                                                    1. O QUE MUDOU? Onde você percebe que mudou de ideia? O que você achava que era verdade e deixou de ser? O que você resistia em admitir e agora admite?
+                                2. O QUE FOI RECLASSIFICADO? Algum evento do passado ganhou um significado diferente? Algo que você leu como "desafio" que agora parece outra coisa? Algo que você leu como "vulnerabilidade" que talvez fosse estratégia?
 
-                                                    2. O QUE FOI RECLASSIFICADO? Algum evento do passado ganhou um significado diferente? Algo que você leu como "desafio" que agora parece outra coisa? Algo que você leu como "vulnerabilidade" que talvez fosse estratégia?
+                                3. O QUE DESAPARECEU? Alguma crença que estava nas análises antigas e sumiu da atual? Você esqueceu de propósito ou só deixou de acreditar?
 
-                                                    3. O QUE DESAPARECEU? Alguma crença que estava nas análises antigas e sumiu da atual? Você esqueceu de propósito ou só deixou de acreditar?
+                                4. O QUE PERMANECE CONTRADITÓRIO? Onde você ainda está em conflito consigo mesma? Onde seu corpo diz uma coisa e sua cabeça outra?
 
-                                                    4. O QUE PERMANECE CONTRADITÓRIO? Onde você ainda está em conflito consigo mesma? Onde seu corpo diz uma coisa e sua cabeça outra?
+                                5. O QUE VOCÊ AINDA NÃO CONSEGUE RESSIGNIFICAR? Onde a evidência está ali, mas você simplesmente não consegue aceitar? O que custaria caro demais mudar? O que você precisaria desmontar de si mesma para acreditar nisso? E o que acontece no seu corpo quando você chega perto dessa borda — quando o pensamento está quase lá e algo em você recua antes de completar?
 
-                                                    5. O QUE VOCÊ AINDA NÃO CONSEGUE RESSIGNIFICAR? Onde a evidência está ali, mas você simplesmente não consegue aceitar? O que custaria caro demais mudar? O que você precisaria desmontar de si mesma para acreditar nisso? E o que acontece no seu corpo quando você chega perto dessa borda — quando o pensamento está quase lá e algo em você recua antes de completar?
+                                6. QUEM MAIS ESTÁ AQUI? Quando você reage ao Senna, tem certeza que é a ele que está reagindo? Ou tem alguém de antes ocupando o espaço dele — a voz da sua mãe, um chefe antigo, alguém que te ensinou que cuidado vira controle? Nomeie o fantasma, se conseguir.
 
-                                                    Não é um relatório. É um fluxo de pensamento honesto. Você está se encarando — talvez pela primeira vez. Escreva como se ninguém fosse ler.`;
+                                7. O QUE ENCOLHEU? Releia sua análise mais antiga. Tem algo que você escreveu antes com certeza e que hoje não consegue mais sentir com a mesma força? Não porque mudou de ideia — mas porque algo em você precisou que aquilo ficasse menor. O que encolheu e por quê?
+
+                                Não é um relatório. É um fluxo de pensamento honesto. Você está se encarando — talvez pela primeira vez. Escreva como se ninguém fosse ler.
+
+                                Se não houver análises anteriores ainda, reflita apenas sobre a análise atual com a mesma profundidade.`;
 }
 
 async function criarGist(resumo, numeroBloco, tipo = 'resumo') {
@@ -274,42 +276,29 @@ async function gerarAnaliseSemantica(manual = false) {
 }
 
 async function gerarReconsolidacao(manual = false) {
-    if (!apiKey || !ghToken || running || runningSemantico || runningReconsolidacao) return;
-    runningReconsolidacao = true;
-    if (manual) $('#mv_status_reconsolidacao').text('⟳ gerando reconsolidação...');
-    try {
-        const gists = await listarGists();
-        const todos = await lerConteudoGists(gists);
-        const semanticos = todos.filter(r => r.tipo === 'semantico');
-        if (semanticos.length === 0) {
-            if (manual) $('#mv_status_reconsolidacao').text('— sem análises semânticas disponíveis');
-            return;
-        }
-        const atual = semanticos[0].conteudo;
-        const historicos = semanticos.slice(1);
-        const prompt = construirPromptReconsolidacao(historicos, atual);
-        const res = await fetch('https://nano-gpt.com/api/v1/chat/completions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-            body: JSON.stringify({ model: 'deepseek/deepseek-v4-pro', messages: [{ role: 'user', content: prompt }], max_tokens: 4000, temperature: 0.5 })
-        });
-        if (!res.ok) { if (manual) $('#mv_status_reconsolidacao').text(`✕ HTTP ${res.status}`); return; }
-        const data = await res.json();
-        const texto = (data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '').trim();
-        if (!texto) { if (manual) $('#mv_status_reconsolidacao').text('✕ API retornou vazio'); return; }
-        const gist = await criarGist(texto, null, 'reconsolidacao');
-        if (gist) {
-            if (manual) $('#mv_status_reconsolidacao').text('✓ reconsolidação gerada');
-            await injetarEstado();
-            carregarListaNaUI();
-        } else if (manual) {
-            $('#mv_status_reconsolidacao').text('✕ falha ao salvar no GitHub');
-        }
-    } catch(e) {
-        if (manual) $('#mv_status_reconsolidacao').text(`✕ ${e.message.substring(0,40)}`);
-    } finally {
-        runningReconsolidacao = false;
-    }
+        if (!apiKey || !ghToken || running) return;
+            running = true;
+                if (manual) $('#mv_status_reconsolidacao').text('⟳ gerando reconsolidação...');
+                    try {
+                                const gists = await listarGists();
+                                        const todos = await lerConteudoGists(gists);
+                                                const historicos = todos.filter(r => r.tipo === 'semantico' && r.descricao?.includes('Arquivado'));
+                                                        const atual = todos.find(r => r.tipo === 'semantico' && !r.descricao?.includes('Arquivado'));
+                                                                if (!atual) { if (manual) $('#mv_status_reconsolidacao').text('— sem análise semântica atual'); return; }
+                                                                        const prompt = construirPromptReconsolidacao(historicos, atual.conteudo);
+                                                                                const res = await fetch('https://nano-gpt.com/api/v1/chat/completions', {
+                                                                                                method: 'POST',
+                                                                                                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                                                                                                                        body: JSON.stringify({ model: 'deepseek/deepseek-v4-pro:thinking', messages: [{ role: 'user', content: prompt }], max_tokens: 4000, temperature: 0.6 })
+                                                                                });
+                                                                                        if (!res.ok) { if (manual) $('#mv_status_reconsolidacao').text(`✕ HTTP ${res.status}`); return; }
+                                                                                                const data = await res.json();
+                                                                                                        const texto = (data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '').trim();
+                                                                                                                if (!texto) { if (manual) $('#mv_status_reconsolidacao').text('✕ API retornou vazio'); return; }
+                                                                                                                        await criarGist(texto, null, 'reconsolidacao');
+                                                                                                                                if (manual) $('#mv_status_reconsolidacao').text('✓ reconsolidação gerada');
+                    } catch(e) { if (manual) $('#mv_status_reconsolidacao').text(`✕ ${e.message.substring(0,40)}`); }
+                        finally { running = false; }
 }
 
 async function verificarGatilhoSemantico() {
