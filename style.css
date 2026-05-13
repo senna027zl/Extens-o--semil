@@ -1,68 +1,4 @@
 /* Hannacore v2.0 — Estilos */
-.hc-panel {
-  font-family: system-ui, sans-serif;
-  background: #181825;
-  color: #cdd6f4;
-  padding: 12px;
-  border-radius: 8px;
-  margin: 8px 0;
-}
-
-.hc-panel h4 {
-  margin: 0 0 8px 0;
-  color: #cba6f7;
-}
-
-.hc-panel label {
-  display: block;
-  font-size: 12px;
-  color: #a6adc8;
-  margin-top: 6px;
-}
-
-.hc-panel input, .hc-panel select {
-  width: 100%;
-  background: #313244;
-  color: #cdd6f4;
-  border: none;
-  padding: 6px;
-  border-radius: 4px;
-  margin-top: 2px;
-  font-size: 13px;
-}
-
-.hc-panel button {
-  background: #cba6f7;
-  color: #1e1e2e;
-  border: none;
-  padding: 8px 12px;
-  border-radius: 4px;
-  margin-top: 8px;
-  cursor: pointer;
-  font-weight: bold;
-  width: 100%;
-}
-
-.hc-panel button.danger {
-  background: #f38ba8;
-}
-
-.hc-memory-layer-superficie { color: #a6e3a1; }
-.hc-memory-layer-intermediaria { color: #f9e2af; }
-.hc-memory-layer-profunda { color: #cba6f7; }
-
-.hc-status {
-  font-size: 12px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  margin: 2px;
-  display: inline-block;
-}
-
-.hc-status.active { background: #a6e3a1; color: #1e1e2e; }
-.hc-status.inactive { background: #45475a; color: #a6adc8; }
-
-/* ========== PAINEL DE CONFIGURAÇÃO ========== */
 #hc-config-panel {
   position: fixed;
   top: 50%;
@@ -81,13 +17,11 @@
   font-family: system-ui, sans-serif;
   display: none;
 }
-
 #hc-config-panel h3 {
   margin: 0 0 16px 0;
   color: #cba6f7;
   font-size: 16px;
 }
-
 #hc-config-panel label {
   display: block;
   font-size: 11px;
@@ -96,7 +30,6 @@
   margin-top: 10px;
   margin-bottom: 2px;
 }
-
 #hc-config-panel input {
   width: 100%;
   background: #313244;
@@ -107,13 +40,11 @@
   font-size: 13px;
   box-sizing: border-box;
 }
-
 #hc-config-panel .hc-btn-row {
   display: flex;
   gap: 8px;
   margin-top: 16px;
 }
-
 #hc-config-panel button {
   flex: 1;
   padding: 10px;
@@ -123,11 +54,9 @@
   cursor: pointer;
   font-size: 13px;
 }
-
 .hc-btn-save { background: #a6e3a1; color: #1e1e2e; }
 .hc-btn-close { background: #f38ba8; color: #1e1e2e; }
 .hc-btn-toggle { background: #cba6f7; color: #1e1e2e; }
-
 .hc-status-badge {
   display: inline-block;
   padding: 2px 8px;
@@ -135,11 +64,8 @@
   font-size: 10px;
   margin-left: 6px;
 }
-
 .hc-status-ok { background: #a6e3a1; color: #1e1e2e; }
 .hc-status-off { background: #45475a; color: #a6adc8; }
-
-/* Botão flutuante */
 #hc-fab {
   position: fixed;
   bottom: 20px;
