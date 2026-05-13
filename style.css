@@ -1,16 +1,63 @@
-/* Estilos mínimos para o painel de status (snapshot) */
-#semil-snapshot-panel {
-      font-family: system-ui, sans-serif;
+/* Hannacore v2.0 — Estilos */
+.hc-panel {
+  font-family: system-ui, sans-serif;
+  background: #181825;
+  color: #cdd6f4;
+  padding: 12px;
+  border-radius: 8px;
+  margin: 8px 0;
 }
-#semil-snapshot-panel ul {
-      list-style: none;
-        padding-left: 0;
-}
-#semil-snapshot-panel li {
-      margin-bottom: 6px;
-        font-size: 13px;
-}
-.semil-mem-superficie { color: #a6e3a1; }
-.semil-mem-intermediaria { color: #f9e2af; }
-.semil-mem-profunda { color: #cba6f7; }
 
+.hc-panel h4 {
+  margin: 0 0 8px 0;
+  color: #cba6f7;
+}
+
+.hc-panel label {
+  display: block;
+  font-size: 12px;
+  color: #a6adc8;
+  margin-top: 6px;
+}
+
+.hc-panel input, .hc-panel select {
+  width: 100%;
+  background: #313244;
+  color: #cdd6f4;
+  border: none;
+  padding: 6px;
+  border-radius: 4px;
+  margin-top: 2px;
+  font-size: 13px;
+}
+
+.hc-panel button {
+  background: #cba6f7;
+  color: #1e1e2e;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  margin-top: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  width: 100%;
+}
+
+.hc-panel button.danger {
+  background: #f38ba8;
+}
+
+.hc-memory-layer-superficie { color: #a6e3a1; }
+.hc-memory-layer-intermediaria { color: #f9e2af; }
+.hc-memory-layer-profunda { color: #cba6f7; }
+
+.hc-status {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin: 2px;
+  display: inline-block;
+}
+
+.hc-status.active { background: #a6e3a1; color: #1e1e2e; }
+.hc-status.inactive { background: #45475a; color: #a6adc8; }
