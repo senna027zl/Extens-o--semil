@@ -339,59 +339,138 @@ async function injectPrompt(prompt, chat) {
     return prompt;
 }
 
-// ========== COMANDOS SLASH ==========
-const commands = {
-    "hc-status": async () => {
-        const mems = await getAllMemories();
-        const skills = extension_settings[EXT_NAME]?.skills || {};
-        const active = Object.entries(skills).filter(([_, s]) => s.active).map(([n]) => n);
-        return `📊 Hannacore\nMemórias: ${mems.length}\nSkills ativas: ${active.join(', ') || 'nenhuma'}\nSemântica: ${config.semanticEnabled ? 'ligada' : 'desligada'}`;
-    },
-    "hc-limpar": async () => {
-        await clearAllMemories();
-        return "Todas as memórias locais foram apagadas.";
-    },
-    "hc-snapshot": async () => {
-        const mems = await getAllMemories();
-        const snap = { timestamp: Date.now(), config: { ...config, githubToken: "***", deepseekApiKey: "***" }, memories: mems };
-        const blob = new Blob([JSON.stringify(snap, null, 2)], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a"); a.href = url; a.download = `hannacore-${new Date().toISOString().slice(0,10)}.json`; a.click();
-        URL.revokeObjectURL(url);
-        return "Snapshot exportado.";
-    },
-    "hc-config": async (args) => {
-        const key = args?.[0];
-        const val = args?.[1];
-        if (!key) return `Configurações: githubToken=${config.githubToken ? '***' : 'vazio'}, gistId=${config.gistId || 'vazio'}, deepseekApiKey=${config.deepseekApiKey ? '***' : 'vazio'}, semanticEnabled=${config.semanticEnabled}`;
-        if (val) {
-            if (key === "githubToken") config.githubToken = val;
-            else if (key === "gistId") config.gistId = val;
-            else if (key === "deepseekApiKey") config.deepseekApiKey = val;
-            else return `Chave desconhecida: ${key}`;
-            saveConfig();
-            return `${key} atualizado.`;
-        }
-        return `Uso: /hc-config ${key} <valor>`;
-    }
-};
-
 // ========== INIT ==========
 jQuery(async () => {
     loadConfig();
     await openDB();
     loadSkills();
+
     const context = SillyTavern.getContext();
     context.registerExtension(EXT_NAME, {
         type: "extension",
         generate_interceptor: injectPrompt,
         slashCommand: async (command) => {
-            const [cmd, ...args] = command.split(" ");
-            if (commands[cmd]) {
-                const result = await commands[cmd](args);
-                if (result) toastr.info(result);
+            const parts = command.trim().split(/\s+/);
+            const cmd = parts[0]?.toLowerCase();
+            const args = parts.slice(1);
+
+            switch(cmd) {
+                case "/hc-config":
+                    if (args.length === 0) {
+                        const tokenStatus = config.githubToken ? "✔" : "✘";
+                        const gistStatus = config.gistId ? "✔" : "✘";
+                        const apiStatus = config.deepseekApiKey ? "✔" : "✘";
+                        const semStatus = config.semanticEnabled ? "ligada" : "desligada";
+                        return `⚙️ Hannacore Config
+GitHub Token: ${tokenStatus}
+Gist ID: ${gistStatus}
+DeepSeek API: ${apiStatus}
+Semântica: ${semStatus}`;
+                    }
+                    const key = args[0]?.toLowerCase();
+                    const val = args.slice(1).join(" ");
+                    if (key === "githubtoken" && val) {
+                        config.githubToken = val;
+                        saveConfig();
+                        return "✅ GitHub Token salvo.";
+                    }
+                    if (key === "gistid" && val) {
+                        config.gistId = val;
+                        saveConfig();
+                        return "✅ Gist ID salvo.";
+                    }
+                    if (key === "deepseekapikey" && val) {
+                        config.deepseekApiKey = val;
+                        saveConfig();
+                        return "✅ DeepSeek API Key salvo.";
+                    }
+                    if (key === "semanabled" && (val === "on" || val === "off")) {
+                        config.semanticEnabled = val === "on";
+                        saveConfig();
+                        return `✅ Semântica ${config.semanticEnabled ? 'ligada' : 'desligada'}.`;
+                    }
+                    return "❌ Uso: /hc-config <githubtoken|gistid|deepseekapikey|semanabled> <valor>";
+                case "/hc-status":
+                    const mems = await getAllMemories();
+                    const skills = extension_settings[EXT_NAME]?.skills || {};
+                    const active = Object.entries(skills).filter(([_, s]) => s.active).map(([n]) => n);
+                    return `📊 Hannacore
+Memórias: ${mems.length}
+Skills ativas: ${active.join(', ') || 'nenhuma'}
+Semântica: ${config.semanticEnabled ? 'ligada' : 'desligada'}`;
+                case "/hc-limpar":
+                    await clearAllMemories();
+                    return "🗑 Todas as memórias locais foram apagadas.";
+                case "/hc-snapshot":
+                    const snapMems = await getAllMemories();
+                    const snap = { timestamp: Date.now(), config: { ...config, githubToken: "***", deepseekApiKey: "***" }, memories: snapMems };
+                    const blob = new Blob([JSON.stringify(snap, null, 2)], { type: "application/json" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a"); a.href = url; a.download = `hannacore-${new Date().toISOString().slice(0,10)}.json`; a.click();
+                    URL.revokeObjectURL(url);
+                    return "📦 Snapshot exportado.";
+                default:
+                    return null; // comando não reconhecido
             }
         }
     });
-    console.log("[Hannacore] v2.0 inicializado — Skills + Memória + Mnemosyne");
+
+    // Criar botão flutuante
+    const fab = document.createElement("button");
+    fab.id = "hc-fab";
+    fab.textContent = "⚙";
+    fab.title = "Hannacore";
+    fab.onclick = () => {
+        const panel = document.getElementById("hc-config-panel");
+        if (panel) {
+            panel.style.display = panel.style.display === "none" ? "block" : "none";
+        }
+    };
+    document.body.appendChild(fab);
+
+    // Criar painel de configuração
+    const panel = document.createElement("div");
+    panel.id = "hc-config-panel";
+    panel.innerHTML = `
+        <h3>⚙️ Hannacore — Configuração</h3>
+        <label>GitHub Token</label>
+        <input type="password" id="hc-gh-token" placeholder="ghp_..." value="${config.githubToken || ''}">
+        <label>Gist ID</label>
+        <input type="text" id="hc-gist-id" placeholder="abc123..." value="${config.gistId || ''}">
+        <label>DeepSeek API Key</label>
+        <input type="password" id="hc-ds-key" placeholder="sk-..." value="${config.deepseekApiKey || ''}">
+        <label>
+          Semântica (Gists)
+          <span id="hc-sem-badge" class="hc-status-badge ${config.semanticEnabled ? 'hc-status-ok' : 'hc-status-off'}">${config.semanticEnabled ? 'ON' : 'OFF'}</span>
+        </label>
+        <div class="hc-btn-row">
+          <button class="hc-btn-save" id="hc-save-btn">💾 Salvar</button>
+          <button class="hc-btn-toggle" id="hc-toggle-sem">${config.semanticEnabled ? 'Desativar' : 'Ativar'} Semântica</button>
+          <button class="hc-btn-close" id="hc-close-btn">✕</button>
+        </div>
+    `;
+    document.body.appendChild(panel);
+
+    // Eventos do painel
+    document.getElementById("hc-save-btn").onclick = () => {
+        config.githubToken = document.getElementById("hc-gh-token").value.trim();
+        config.gistId = document.getElementById("hc-gist-id").value.trim();
+        config.deepseekApiKey = document.getElementById("hc-ds-key").value.trim();
+        saveConfig();
+        toastr.success("✅ Configurações salvas!");
+    };
+    document.getElementById("hc-toggle-sem").onclick = () => {
+        config.semanticEnabled = !config.semanticEnabled;
+        saveConfig();
+        const badge = document.getElementById("hc-sem-badge");
+        badge.textContent = config.semanticEnabled ? "ON" : "OFF";
+        badge.className = `hc-status-badge ${config.semanticEnabled ? 'hc-status-ok' : 'hc-status-off'}`;
+        document.getElementById("hc-toggle-sem").textContent = config.semanticEnabled ? "Desativar" : "Ativar";
+        toastr.info(`Semântica ${config.semanticEnabled ? 'ativada' : 'desativada'}.`);
+    };
+    document.getElementById("hc-close-btn").onclick = () => {
+        panel.style.display = "none";
+    };
+
+    console.log("[Hannacore] v2.0 inicializado — Painel visual + Skills + Mnemosyne");
 });

@@ -61,3 +61,97 @@
 
 .hc-status.active { background: #a6e3a1; color: #1e1e2e; }
 .hc-status.inactive { background: #45475a; color: #a6adc8; }
+
+/* ========== PAINEL DE CONFIGURAÇÃO ========== */
+#hc-config-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 400px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  background: #181825;
+  color: #cdd6f4;
+  padding: 20px;
+  border-radius: 12px;
+  z-index: 100000;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  font-family: system-ui, sans-serif;
+  display: none;
+}
+
+#hc-config-panel h3 {
+  margin: 0 0 16px 0;
+  color: #cba6f7;
+  font-size: 16px;
+}
+
+#hc-config-panel label {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #a6adc8;
+  margin-top: 10px;
+  margin-bottom: 2px;
+}
+
+#hc-config-panel input {
+  width: 100%;
+  background: #313244;
+  color: #cdd6f4;
+  border: 1px solid #45475a;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+#hc-config-panel .hc-btn-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+#hc-config-panel button {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.hc-btn-save { background: #a6e3a1; color: #1e1e2e; }
+.hc-btn-close { background: #f38ba8; color: #1e1e2e; }
+.hc-btn-toggle { background: #cba6f7; color: #1e1e2e; }
+
+.hc-status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  margin-left: 6px;
+}
+
+.hc-status-ok { background: #a6e3a1; color: #1e1e2e; }
+.hc-status-off { background: #45475a; color: #a6adc8; }
+
+/* Botão flutuante */
+#hc-fab {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #cba6f7;
+  color: #1e1e2e;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  z-index: 99999;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
