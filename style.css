@@ -1,2 +1,16 @@
-#mv_lista::-webkit-scrollbar { width: 3px; }
-#mv_lista::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+/* Estilos mínimos para o painel de status (snapshot) */
+#semil-snapshot-panel {
+      font-family: system-ui, sans-serif;
+}
+#semil-snapshot-panel ul {
+      list-style: none;
+        padding-left: 0;
+}
+#semil-snapshot-panel li {
+      margin-bottom: 6px;
+        font-size: 13px;
+}
+.semil-mem-superficie { color: #a6e3a1; }
+.semil-mem-intermediaria { color: #f9e2af; }
+.semil-mem-profunda { color: #cba6f7; }
+

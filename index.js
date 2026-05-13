@@ -1,102 +1,293 @@
-// ============================================
-// MNEMOSYNE v0.8.0
-// Camada 1 (Resumos) + Camada 2 (Análise Semântica) + Camada 3 (Reconsolidação)
-// ============================================
+// ========== Semil 2.0 — Memória Evolutiva ==========
+const EXT_NAME = "Semil";
+const DB_NAME = "SemilDB";
+const DB_VERSION = 1;
+const STORE_MEMORIES = "memories";
+const STORE_SESSIONS = "sessions";
 
-import { getContext, saveMetadataDebounced } from '../../../extensions.js';
-import { eventSource, event_types, setExtensionPrompt } from '../../../../script.js';
+// ========== ESTADO ==========
+let db = null;
+let config = {
+        autoDetect: true,
+            summaryInterval: 5,          // mensagens entre resumos fixos (fallback)
+                maxTokensSummary: 300,
+                    decayFactor: 0.9,            // fator de esquecimento diário
+                        emotionalTriggers: ["nunca","sempre","morro","medo","pai","mãe","sozinho","silêncio","primeira vez","última","adeus","lembra"],
+                            reactivateThreshold: 0.7     // similaridade para reativar memória
+};
 
-const LS = 'mnemosyne-settings';
-let saved = {};
-try {
-    const raw = localStorage.getItem(LS);
-    if (raw) saved = JSON.parse(raw);
-} catch(e) { console.warn('[Mnemosyne] Config corrompida'); localStorage.removeItem(LS); }
-
-let apiKey             = saved.apiKey             || '';
-let ghToken            = saved.ghToken            || '';
-let menteModel         = saved.menteModel         || 'glm-5.1';
-let menteInterval      = saved.menteInterval      || 50;
-let menteAtiva         = saved.menteAtiva !== undefined ? saved.menteAtiva : true;
-let mentePrompt        = saved.mentePrompt        || defaultResumoPrompt();
-let injetarNoRP        = saved.injetarNoRP !== undefined ? saved.injetarNoRP : false;
-let semanticoAtivo     = saved.semanticoAtivo !== undefined ? saved.semanticoAtivo : true;
-let semanticoModel     = saved.semanticoModel     || 'glm-5.1';
-let semanticoIntervalo = saved.semanticoIntervalo || 3;
-let semanticoIntervaloReconsolidacao = saved.semanticoIntervaloReconsolidacao || 3;
-let ultimoSemantico    = saved.ultimoSemantico    || 0;
-let ultimoReconsolidacao = saved.ultimoReconsolidacao || 0;
-
-let ultimoProcessamento = 0;
-let running = false;
-let runningSemantico = false;
-let runningReconsolidacao = false;
-let resumosCache = [];
-let semanticoCache = null;
-
-function defaultResumoPrompt() {
-    return `Você é um analista de narrativa. Leia o bloco de mensagens deste roleplay entre Hanna (coordenadora, 32 anos, controladora, observadora, mãe ensinou que vulnerabilidade é brecha) e Senna (estagiário, 18 anos).
-
-Produza um resumo denso em português com:
-1. ARCO PRINCIPAL: O que aconteceu de mais importante neste bloco? Qual foi a evolução emocional ou de poder entre os dois?
-2. MOMENTOS-CHAVE: 2-3 momentos específicos que definiram este bloco (eventos, diálogos, silêncios)
-3. ESTADO DA HANNA: Como ela está no final deste bloco? Mais aberta ou mais fechada? Mais no controle ou mais vulnerável?
-4. PADRÕES: Algum padrão novo detectado no comportamento do Senna ou no dela mesma?
-5. SINAL SOMÁTICO: Alguma reação corporal significativa da Hanna (contração, expansão, ausência)?
-
-Regras de tom:
-- Escreva como um observador treinado, não como um personagem de roleplay.
-- Sem floreios, sem encenação, sem imitar a voz da Hanna.
-- Tom seco, analítico, preciso.
-- Nada de "Hanna pensa consigo mesma", "ela se pergunta", "num gesto quase imperceptível".
-- Sem conclusões sobre o futuro da relação. Apenas o que está no bloco.
-
-Formato: texto corrido, 3-5 parágrafos. Sem markdown, sem títulos.`;
+// ========== PERSISTÊNCIA DE CONFIGURAÇÃO ==========
+function loadConfig() {
+        if (!extension_settings[EXT_NAME]) extension_settings[EXT_NAME] = {};
+            if (extension_settings[EXT_NAME].config) Object.assign(config, extension_settings[EXT_NAME].config);
+}
+function saveConfig() {
+        extension_settings[EXT_NAME].config = config;
+            saveSettingsDebounced();
 }
 
-function construirPromptSemantico(resumos, gistAnterior = null) {
-        const textoGists = resumos.map(r => `[Bloco ${r.bloco}]: ${r.conteudo}`).join('\n\n---\n\n');
-
-            const contextoAnterior = gistAnterior
-                    ? `ANÁLISE ANTERIOR (leia primeiro):\n${gistAnterior}\n\n---\n\nAgora leia os resumos abaixo. Atualize APENAS o que mudou.`
-                            : 'Esta é sua primeira análise.';
-
-                                return `Você é Hanna. Não narre. Não atue. Apenas pense.
-
-                                Você está sozinha no silêncio do seu apartamento. Senna não está aqui. Ninguém está lendo isto. É apenas você e o que você não consegue parar de processar.
-
-                                ${contextoAnterior}
-
-                                RESUMOS:
-                                ${textoGists}
-
-                                Reflita EM PRIMEIRA PESSOA. Para cada crença que você identificar, tente enxergar três camadas:
-
-                                — O que seu corpo sentiu primeiro? (antes da racionalização: a mandíbula, os ombros, a respiração, o coração, a mão na caneta)
-                                — O que sua mente previu que ia acontecer? (você sempre antecipa — é como você sobreviveu até aqui)
-                                — E o que de fato aconteceu? A previsão se confirmou ou foi violada? O que isso bagunçou em você?
-
-                                Se houver análise anterior:
-                                - Crenças confirmadas: apenas reforce, sem reescrever completamente
-                                - Crenças violadas: sinalize claramente — "eu achava que..., mas..."
-                                - Novas crenças: desenvolva normalmente
-                                - Padrões intactos: mantenha, não reescreva
-
-                                Se for a primeira análise, construa tudo do zero.
-
-                                Tom: introspectivo, analítico, sem floreios, sem performance. Não use markdown. Não escreva "Hanna" ou "ela". Você é Hanna. Escreva como se estivesse pensando sozinha — não para um leitor, não para um diário, não para ele. Só para você.`;
+// ========== INDEXEDDB ==========
+function openDB() {
+        return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(DB_NAME, DB_VERSION);
+                            request.onupgradeneeded = (event) => {
+                                            const db = event.target.result;
+                                                        if (!db.objectStoreNames.contains(STORE_MEMORIES)) {
+                                                                            const store = db.createObjectStore(STORE_MEMORIES, { keyPath: "id", autoIncrement: true });
+                                                                                            store.createIndex("layer", "layer", { unique: false });
+                                                                                                            store.createIndex("timestamp", "timestamp", { unique: false });
+                                                        }
+                                                                    if (!db.objectStoreNames.contains(STORE_SESSIONS)) {
+                                                                                        db.createObjectStore(STORE_SESSIONS, { keyPath: "id", autoIncrement: true });
+                                                                    }
+                            };
+                                    request.onsuccess = () => {
+                                                    db = request.result;
+                                                                resolve(db);
+                                    };
+                                            request.onerror = () => reject(request.error);
+        });
 }
 
-function construirPromptReconsolidacao(historicos, atual) {
-        const textoHistoricos = historicos.length > 0 
-                ? 'ANÁLISES ANTERIORES (em ordem):\n' + historicos.map((h, i) => `[Semântico ${i+1} — ${h.data}]:\n${h.conteudo}`).join('\n\n---\n\n')
-                        : '(Nenhuma análise anterior arquivada.)';
-                            const textoAtual = atual ? `ANÁLISE ATUAL:\n${atual}` : '(Nenhuma análise atual.)';
-                                return `Você é Hanna. Você está sozinha, tarde da noite, relendo suas próprias anotações. Ninguém vai ver isso. Nem você mesma amanhã, se não quiser.
+function addMemory(memory) {
+        return new Promise((resolve, reject) => {
+                    const transaction = db.transaction(STORE_MEMORIES, "readwrite");
+                            const store = transaction.objectStore(STORE_MEMORIES);
+                                    const request = store.add(memory);
+                                            request.onsuccess = () => resolve(request.result);
+                                                    request.onerror = () => reject(request.error);
+        });
+}
 
-                                Abaixo estão todas as análises que você já fez sobre o que viveu com Senna — da mais antiga para a mais recente. Termine com a análise atual.
+function getMemoriesByLayer(layer) {
+        return new Promise((resolve, reject) => {
+                    const transaction = db.transaction(STORE_MEMORIES, "readonly");
+                            const store = transaction.objectStore(STORE_MEMORIES);
+                                    const index = store.index("layer");
+                                            const request = index.getAll(layer);
+                                                    request.onsuccess = () => resolve(request.result);
+                                                            request.onerror = () => reject(request.error);
+        });
+}
 
-                                ${textoHistoricos}
+function getAllMemories() {
+        return new Promise((resolve, reject) => {
+                    const transaction = db.transaction(STORE_MEMORIES, "readonly");
+                            const store = transaction.objectStore(STORE_MEMORIES);
+                                    const request = store.getAll();
+                                            request.onsuccess = () => resolve(request.result);
+                                                    request.onerror = () => reject(request.error);
+        });
+}
+
+function clearAllMemories() {
+        return new Promise((resolve, reject) => {
+                    const transaction = db.transaction(STORE_MEMORIES, "readwrite");
+                            const store = transaction.objectStore(STORE_MEMORIES);
+                                    store.clear();
+                                            transaction.oncomplete = () => resolve();
+                                                    transaction.onerror = () => reject(transaction.error);
+        });
+}
+
+// ========== DETECÇÃO DE PICOS EMOCIONAIS ==========
+function detectEmotionalSpike(messages) {
+        // Pega as últimas 3 mensagens (usuário + modelo)
+            const recent = messages.slice(-3).map(m => m.mes || "").join(" ");
+                const lower = recent.toLowerCase();
+                    const triggered = config.emotionalTriggers.filter(t => lower.includes(t));
+                        // Detecta edições manuais (se houver metadados de edição)
+                            const editedCount = messages.filter(m => m.edited).length; // simplificado
+                                return {
+                                            spike: triggered.length > 0 || editedCount >= 2,
+                                                    triggers: triggered,
+                                                            intensity: Math.min(triggered.length + editedCount, 5)
+                                };
+}
+
+// ========== GERAÇÃO DE RESUMO VIA API ==========
+async function generateSummary(messages) {
+        const prompt = `
+        [Resumo para memória de longo prazo — Hanna]
+        Analise o trecho de RP abaixo como um diretor assistindo à cena filmada. Extraia APENAS o que é significativo para a personagem Hanna:
+
+        1. **Virada emocional** — algo mudou dentro dela? (medo→coragem, distância→proximidade, confiança→dúvida)
+        2. **Decisões** — ela escolheu algo, mesmo que pequeno? (ficar em silêncio é uma decisão)
+        3. **Silêncios significativos** — momentos onde ela *não* respondeu ou hesitou
+        4. **Informações novas** — algo foi revelado sobre o passado, o corpo, os hábitos dela?
+        5. **Padrões** — isso já aconteceu antes? (ex: "terceira vez que ela desvia o olhar quando ele pergunta do pai")
+
+        Formato: 3-5 frases curtas, tempo presente, terceira pessoa.
+        Exemplo: "Hanna hesita antes de responder. É a segunda vez que ela toca a xícara sem beber. Quando ele menciona o pai, ela desvia o olhar — mesmo padrão da sessão anterior."
+
+        Ignorar: ações do Senna que não provocaram reação nela, descrições de ambiente genéricas, diálogos de preenchimento.
+        `;
+            // Chamada à API via ST (usa o modelo atual)
+                const response = await fetch("/api/backends/chat/completions", {
+                            method: "POST",
+                                    headers: {
+                                                    "Content-Type": "application/json",
+                                                                "Authorization": "Bearer " + (getRequestHeaders().Authorization || "")
+                                    },
+                                            body: JSON.stringify({
+                                                            messages: [
+                                                                                { role: "system", content: prompt },
+                                                                                                { role: "user", content: messages.map(m => `${m.name}: ${m.mes}`).join("\n") }
+                                                            ],
+                                                                        max_tokens: config.maxTokensSummary,
+                                                                                    temperature: 0.2
+                                            })
+                });
+                    if (!response.ok) throw new Error("Resume API failed");
+                        const data = await response.json();
+                            return data.choices[0].message.content;
+}
+
+// ========== CLASSIFICAÇÃO DE CAMADA ==========
+function classifyLayer(triggerCount, timestamp) {
+        const ageHours = (Date.now() - timestamp) / (1000 * 60 * 60);
+            if (triggerCount >= 3 || ageHours < 1) return "superficie";
+                if (triggerCount >= 1 || ageHours < 24) return "intermediaria";
+                    return "profunda";
+}
+
+// ========== DECAIMENTO E REATIVAÇÃO ==========
+function applyDecay(memories) {
+        const now = Date.now();
+            return memories.map(m => {
+                        const days = (now - m.timestamp) / (1000 * 60 * 60 * 24);
+                                const weight = Math.max(0.1, 1 * Math.pow(config.decayFactor, days));
+                                        return { ...m, weight };
+            });
+}
+
+// ========== HOLDER DE MENSAGENS EM TEMPO REAL ==========
+let messageBuffer = [];  // armazena mensagens recentes para análise
+
+// ========== INTERCEPTOR DO PROMPT ==========
+async function injectMemories(prompt, chat) {
+        if (!chat || chat.length === 0) return prompt;
+
+            // Adiciona mensagens ao buffer
+                const lastMsg = chat[chat.length - 1];
+                    if (lastMsg) messageBuffer.push(lastMsg);
+                        // Mantém apenas as últimas 50 mensagens no buffer
+                            if (messageBuffer.length > 50) messageBuffer.shift();
+
+                                // Detecção automática de pico
+                                    if (config.autoDetect && messageBuffer.length >= 5) {
+                                                const { spike, triggers, intensity } = detectEmotionalSpike(messageBuffer);
+                                                        if (spike) {
+                                                                        // Gera resumo e salva
+                                                                                    const summary = await generateSummary(messageBuffer.slice(-10)).catch(() => null);
+                                                                                                if (summary) {
+                                                                                                                    const layer = classifyLayer(intensity, Date.now());
+                                                                                                                                    await addMemory({
+                                                                                                                                                            type: "summary",
+                                                                                                                                                                                text: summary,
+                                                                                                                                                                                                    layer: layer,
+                                                                                                                                                                                                                        triggers: triggers,
+                                                                                                                                                                                                                                            timestamp: Date.now(),
+                                                                                                                                                                                                                                                                weight: 1.0
+                                                                                                                                    });
+                                                                                                                                                    // Limpa buffer após resumo
+                                                                                                                                                                    messageBuffer = [];
+                                                                                                                                                                                    console.log(`[Semil] Resumo automático criado (camada ${layer}): ${triggers.join(', ')}`);
+                                                                                                }}
+                                                        }
+                                    }
+
+                                        // Recupera memórias e injeta no contexto
+                                            try {
+                                                        const allMemories = await getAllMemories();
+                                                                const weighted = applyDecay(allMemories);
+                                                                        // Ordena por peso (maior primeiro) e limita para não estourar tokens
+                                                                                const topMemories = weighted.sort((a,b) => b.weight - a.weight).slice(0, 10);
+                                                                                        if (topMemories.length > 0) {
+                                                                                                        const memoryText = topMemories.map(m => `[${m.layer}] ${m.text}`).join("\n");
+                                                                                                                    prompt.system_prompt = `${prompt.system_prompt}\n\n[Memórias anteriores da Hanna]\n${memoryText}`;
+                                                                                        }
+                                            } catch (e) {
+                                                        console.error("[Semil] Erro ao injetar memórias:", e);
+                                            }
+
+                                                return prompt;
+}
+
+// ========== COMANDOS SLASH ==========
+const commands = {
+        "semil-resumir": async (args) => {
+                    const chat = SillyTavern.getContext().chat;
+                            if (!chat || chat.length === 0) return "Nenhum chat ativo.";
+                                    const summary = await generateSummary(chat.slice(-10)).catch(e => "Erro ao gerar resumo.");
+                                            if (typeof summary === "string" && summary.length > 0) {
+                                                            await addMemory({
+                                                                                type: "manual",
+                                                                                                text: summary,
+                                                                                                                layer: "superficie",
+                                                                                                                                timestamp: Date.now(),
+                                                                                                                                                weight: 1.0
+                                                            });
+                                                                        return "Resumo criado e salvo: " + summary;
+                                            }
+                                                    return summary;
+        },
+            "semil-status": async () => {
+                        try {
+                                        const mems = await getAllMemories();
+                                                    const byLayer = { superficie: 0, intermediaria: 0, profunda: 0 };
+                                                                mems.forEach(m => byLayer[m.layer] = (byLayer[m.layer]||0)+1);
+                                                                            return `Memórias: ${mems.length} total | Superfície: ${byLayer.superficie} | Intermediária: ${byLayer.intermediaria} | Profunda: ${byLayer.profunda}`;
+                        } catch (e) {
+                                        return "Erro ao consultar memórias.";
+                        }
+            },
+                "semil-limpar": async () => {
+                            await clearAllMemories();
+                                    return "Todas as memórias foram apagadas.";
+                },
+                    "semil-snapshot": async () => {
+                                try {
+                                                const mems = await getAllMemories();
+                                                            const snap = {
+                                                                                timestamp: Date.now(),
+                                                                                                config: config,
+                                                                                                                memories: mems,
+                                                                                                                                count: mems.length
+                                                            };
+                                                                        const blob = new Blob([JSON.stringify(snap, null, 2)], { type: "application/json" });
+                                                                                    const url = URL.createObjectURL(blob);
+                                                                                                const a = document.createElement("a");
+                                                                                                            a.href = url;
+                                                                                                                        a.download = `semil-snapshot-${new Date().toISOString().slice(0,10)}.json`;
+                                                                                                                                    a.click();
+                                                                                                                                                URL.revokeObjectURL(url);
+                                                                                                                                                            return "Snapshot exportado.";
+                                } catch (e) {
+                                                return "Erro ao gerar snapshot.";
+                                }
+                    }
+};
+
+// ========== INICIALIZAÇÃO ==========
+jQuery(async () => {
+        loadConfig();
+            await openDB();
+                const context = SillyTavern.getContext();
+                    context.registerExtension(EXT_NAME, {
+                                type: "extension",
+                                        generate_interceptor: injectMemories,
+                                                slashCommand: (command) => {
+                                                                const [cmd, ...args] = command.split(" ");
+                                                                            if (commands[cmd]) {
+                                                                                                commands[cmd](args).then(result => {
+                                                                                                                        if (result) toastr.info(result);
+                                                                                                });
+                                                                            }
+                                                }
+                    });
+                        console.log("[Semil 2.0] Extensão inicializada — detecção automática ativa");
+});
 
                                 ${textoAtual}
 

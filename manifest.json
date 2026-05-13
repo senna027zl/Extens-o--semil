@@ -1,11 +1,9 @@
 {
-  "display_name": "Mnemosyne",
-  "name": "mundo-vivo-2",
-  "version": "0.6.0",
-  "description": "Sistema cognitivo de memória para Hanna. Resumos como Gists privados no GitHub.",
-  "js": "index.js",
-  "css": "style.css",
-  "author": "Senna",
-  "homePage": "",
-  "optional": true
+      "display_name": "Semil — Memória Evolutiva",
+        "version": "2.0.0",
+          "author": "Senna",
+            "js": "index.js",
+              "css": "style.css",
+                "type": "extension",
+                  "default_enabled": true
 }
